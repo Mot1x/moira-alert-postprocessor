@@ -6,4 +6,9 @@
         <ImplicitUsings>enable</ImplicitUsings>
     </PropertyGroup>
 
+    <ItemGroup>
+      <Folder Include="Dal\MoiraAlerts\" />
+      <Folder Include="Logic\UseCases\MoiraAIAlertSummaryService\" />
+    </ItemGroup>
+
 </Project>
