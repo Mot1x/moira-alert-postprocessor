@@ -1,0 +1,32 @@
+{
+  "trigger": {
+    "id": "8d216c4d-c34b-439f-91ae-769b479f6514",
+    "name": "test_trigger",
+    "description": "sss",
+    "tags": [
+      "test_tag"
+    ]
+  },
+  "events": [
+    {
+      "metric": "user_requests_total;endpoint=/hello;instance=metric-spawner:8000;job=metric_spawner",
+      "values": {
+        "t1": 1
+      },
+      "timestamp": 1761131810,
+      "trigger_event": false,
+      "state": "OK",
+      "old_state": "NODATA"
+    }
+  ],
+  "contact": {
+    "type": "webhook",
+    "value": "http://alert-receiver:8080/moira/alert",
+    "id": "d445a340-8c67-4368-8945-9c6265156ce2",
+    "user": "anonymous",
+    "team": ""
+  },
+  "plot": "",
+  "plots": [],
+  "throttled": false
+}

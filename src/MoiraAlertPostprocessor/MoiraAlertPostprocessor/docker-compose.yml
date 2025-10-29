@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  moira-postprocessor:
+    build: .
+    image: moira-postprocessor:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - GptOss__Endpoint=${GPT_OSS_ENDPOINT:-http://host.docker.internal:8000/generate}
+      - GptOss__Model=${GPT_OSS_MODEL:-gpt-oss-small}
+    restart: unless-stopped
