@@ -7,21 +7,20 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <_ContentIncludedByDefault Remove="Views\Home\Index.cshtml" />
-      <_ContentIncludedByDefault Remove="Views\Home\Privacy.cshtml" />
-      <_ContentIncludedByDefault Remove="Views\Shared\Error.cshtml" />
-      <_ContentIncludedByDefault Remove="Views\Shared\_Layout.cshtml" />
-      <_ContentIncludedByDefault Remove="Views\Shared\_ValidationScriptsPartial.cshtml" />
-      <_ContentIncludedByDefault Remove="Views\_ViewImports.cshtml" />
-      <_ContentIncludedByDefault Remove="Views\_ViewStart.cshtml" />
+        <_ContentIncludedByDefault Remove="Views\Home\Index.cshtml"/>
+        <_ContentIncludedByDefault Remove="Views\Home\Privacy.cshtml"/>
+        <_ContentIncludedByDefault Remove="Views\Shared\Error.cshtml"/>
+        <_ContentIncludedByDefault Remove="Views\Shared\_Layout.cshtml"/>
+        <_ContentIncludedByDefault Remove="Views\Shared\_ValidationScriptsPartial.cshtml"/>
+        <_ContentIncludedByDefault Remove="Views\_ViewImports.cshtml"/>
+        <_ContentIncludedByDefault Remove="Views\_ViewStart.cshtml"/>
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="xunit" Version="2.9.3" />
+        <PackageReference Include="xunit" Version="2.9.3"/>
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="Controllers\" />
+        <Folder Include="Controllers\"/>
     </ItemGroup>
-
 </Project>

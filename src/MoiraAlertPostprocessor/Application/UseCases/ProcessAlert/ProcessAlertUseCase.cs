@@ -5,15 +5,24 @@ using MoiraPostprocessor.Domain.Entities;
 
 namespace MoiraPostprocessor.Application.UseCases.ProcessAlert
 {
-    public abstract class ProcessAlertUseCase(IAlertRepository alertRepository, INlpService nlpService)
+    public class ProcessAlertUseCase
     {
+        private readonly IAlertRepository _alertRepository;
+        private readonly INlpService _nlpService;
+
+        public ProcessAlertUseCase(IAlertRepository alertRepository, INlpService nlpService)
+        {
+            _alertRepository = alertRepository;
+            _nlpService = nlpService;
+        }
+
         public async Task<ProcessAlertResponse> ExecuteAsync(ProcessAlertRequest request, CancellationToken cancellationToken = default)
         {
             // persist incoming alert for audit/troubleshooting
-            await alertRepository.SaveAsync(request.Alert, cancellationToken);
+            await _alertRepository.SaveAsync(request.Alert, cancellationToken);
 
             // call NLP to get suggestion
-            var suggestion = await nlpService.GetSuggestionAsync(request.Alert, cancellationToken);
+            var suggestion = await _nlpService.GetSuggestionAsync(request.Alert, cancellationToken);
 
             return new ProcessAlertResponse(suggestion);
         }

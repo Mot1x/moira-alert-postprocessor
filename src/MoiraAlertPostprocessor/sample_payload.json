@@ -1,28 +1,28 @@
 {
   "trigger": {
-    "id": "8d216c4d-c34b-439f-91ae-769b479f6514",
-    "name": "test_trigger",
-    "description": "sss",
+    "id": "04908d37-1fe3-4710-94fb-a2e10c2258ed",
+    "name": "trigger52",
+    "description": "fxvvfdgbv",
     "tags": [
-      "test_tag"
+      "test"
     ]
   },
   "events": [
     {
       "metric": "user_requests_total;endpoint=/hello;instance=metric-spawner:8000;job=metric_spawner",
       "values": {
-        "t1": 1
+        "t1": 15
       },
-      "timestamp": 1761131810,
+      "timestamp": 1761576520,
       "trigger_event": false,
-      "state": "OK",
+      "state": "ERROR",
       "old_state": "NODATA"
     }
   ],
   "contact": {
     "type": "webhook",
     "value": "http://alert-receiver:8080/moira/alert",
-    "id": "d445a340-8c67-4368-8945-9c6265156ce2",
+    "id": "e6abe5c5-d9cb-4770-adf7-66caaca9d11f",
     "user": "anonymous",
     "team": ""
   },
