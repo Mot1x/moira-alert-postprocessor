@@ -1,6 +1,7 @@
 ﻿using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Options;
 using MoiraAlertPostprocessor.Domain.Entities;
 using MoiraAlertPostprocessor.Domain.Interfaces;
 
@@ -11,11 +12,12 @@ public class OllamaClient : INlpService
     private readonly HttpClient _http;
     private readonly OllamaOptions _options;
 
-    public OllamaClient(HttpClient http, OllamaOptions options)
+    public OllamaClient(HttpClient http, IOptions<OllamaOptions> options)
     {
         _http = http;
-        _options = options;
+        _options = options.Value;
         _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
+        Console.WriteLine($"[Startup] NLP provider: Ollama, endpoint={_options.Endpoint}, model={_options.Model}");
     }
 
     public async Task<Suggestion> GetSuggestionAsync(MoiraAlert alert, CancellationToken cancellationToken = default)

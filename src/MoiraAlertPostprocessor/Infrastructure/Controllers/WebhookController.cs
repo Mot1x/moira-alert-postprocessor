@@ -16,7 +16,7 @@ public class WebhookController(ProcessAlertUseCase processAlertUseCase) : Contro
         // Note: consider validating a shared secret/header to ensure request from Moira.
         var domain = dto.ToDomain();
         var response = await processAlertUseCase.ExecuteAsync(new ProcessAlertRequest(domain), cancellationToken);
-        var outDto = MoiraMapper.ToDto(response.Suggestion);
+        var outDto = response.Suggestion.ToDto();
 
         // Log suggestion to console so it's visible when running the app
         try
@@ -30,6 +30,7 @@ public class WebhookController(ProcessAlertUseCase processAlertUseCase) : Contro
                 foreach (var a in outDto.Actions)
                     Console.WriteLine(" - " + a);
             }
+
             Console.WriteLine("--- End Suggestion ---");
         }
         catch (Exception ex)

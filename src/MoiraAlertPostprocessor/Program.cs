@@ -12,14 +12,8 @@ var urls = Environment.GetEnvironmentVariable("ASPNETCORE_URLS")
            ?? "http://localhost:8080";
 builder.WebHost.UseUrls(urls);
 
-// Configure Ollama options (appsettings or env)
-var ollamaOptions = new OllamaOptions
-{
-    Endpoint = configuration.GetValue<string>("Ollama:Endpoint") ?? "http://localhost:11434/api/generate",
-    Model = configuration.GetValue<string>("Ollama:Model") ?? "gpt-oss:20b-cloud",
-    TimeoutSeconds = configuration.GetValue<int?>("Ollama:TimeoutSeconds") ?? 30
-};
-builder.Services.AddSingleton(ollamaOptions);
+builder.Services.Configure<OllamaOptions>(configuration.GetSection("Ollama"))
+    .AddSingleton<OllamaOptions>();
 
 // Framework
 builder.Services.AddControllers().AddJsonOptions(opts =>
@@ -32,11 +26,10 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSingleton<IAlertRepository, MoiraAlertPostprocessor.Infrastructure.Repositories.InMemoryAlertRepository>();
 
 // Register HTTP client for Ollama
-builder.Services.AddHttpClient<OllamaClient>(c => { c.Timeout = TimeSpan.FromSeconds(ollamaOptions.TimeoutSeconds); });
+builder.Services.AddHttpClient<OllamaClient>();
 
 // Use Ollama as the only NLP provider
 builder.Services.AddSingleton<INlpService>(sp => sp.GetRequiredService<OllamaClient>());
-Console.WriteLine($"[Startup] NLP provider: Ollama, endpoint={ollamaOptions.Endpoint}, model={ollamaOptions.Model}");
 
 // UseCase and controllers
 builder.Services.AddTransient<MoiraPostprocessor.Application.UseCases.ProcessAlert.ProcessAlertUseCase>();
