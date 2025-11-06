@@ -1,6 +1,6 @@
 using MoiraAlertPostprocessor.Domain.Entities;
 
-namespace MoiraAlertPostprocessor.Domain.Interfaces;
+namespace MoiraAlertPostprocessor.Infrastructure.NlServices;
 
 public interface INlpService
 {

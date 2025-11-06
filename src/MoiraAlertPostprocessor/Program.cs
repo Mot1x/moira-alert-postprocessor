@@ -1,6 +1,11 @@
-using MoiraAlertPostprocessor.Domain.Interfaces;
-using MoiraAlertPostprocessor.Infrastructure.Ollama;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
+using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
+using MoiraAlertPostprocessor.Infrastructure.NlServices;
+using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
+using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
+using MoiraAlertPostprocessor.Mapping;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -34,12 +39,16 @@ builder.Services.AddSingleton<INlpService>(sp => sp.GetRequiredService<OllamaCli
 // UseCase and controllers
 builder.Services.AddTransient<MoiraPostprocessor.Application.UseCases.ProcessAlert.ProcessAlertUseCase>();
 
-var app = builder.Build();
+builder.Services.Configure<TelegramAlertOptions>(
+    builder.Configuration.GetSection(TelegramAlertOptions.SectionName)
+);
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseDeveloperExceptionPage();
-}
+builder.Services.AddHttpClient(); // для внутренних нужд Telegram.Bot (если понадобится)
+builder.Services.AddSingleton<IMoiraAlertChannel, TelegramAlertChannel>();
+
+builder.Services.AddAutoMapper(typeof(MoiraMappingProfile));
+
+var app = builder.Build();
 
 // Health-check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "ok", urls }));

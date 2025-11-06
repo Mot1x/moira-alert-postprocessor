@@ -1,9 +1,8 @@
 using System;
 using System.Collections.Generic;
 
-namespace MoiraPostprocessor.API.Models
+namespace MoiraAlertPostprocessor.API.Models.Request
 {
-    // Пример DTO — ПРИМЕРНЫЙ. ПРИШЛИТЕ РЕАЛЬНЫЙ PAYLOAD МОИРА для точной структуры.
     public class IncomingAlertDto
     {
         public string Id { get; set; }

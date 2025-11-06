@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace MoiraPostprocessor.API.Models
+namespace MoiraAlertPostprocessor.API.Models.Response
 {
     public class OutgoingSuggestionDto
     {

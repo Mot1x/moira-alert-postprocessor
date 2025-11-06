@@ -3,9 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MoiraAlertPostprocessor.Domain.Entities;
-using MoiraAlertPostprocessor.Domain.Interfaces;
 
-namespace MoiraAlertPostprocessor.Infrastructure.Ollama;
+namespace MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 
 public class OllamaClient : INlpService
 {

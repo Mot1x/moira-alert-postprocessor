@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
-namespace MoiraPostprocessor.API.Models
+namespace MoiraAlertPostprocessor.API.Models.Request
 {
     public class IncomingMoiraWebhookDto
     {

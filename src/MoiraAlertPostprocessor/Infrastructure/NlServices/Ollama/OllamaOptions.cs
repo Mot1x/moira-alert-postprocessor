@@ -1,7 +1,10 @@
 ﻿using System;
 
-namespace MoiraAlertPostprocessor.Infrastructure.Ollama;
+namespace MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 
+/// <summary>
+/// ToDO!!!
+/// </summary>
 public class OllamaOptions
 {
     public string Endpoint { get; init; }

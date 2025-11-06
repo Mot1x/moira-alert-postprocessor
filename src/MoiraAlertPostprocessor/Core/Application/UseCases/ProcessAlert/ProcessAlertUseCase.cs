@@ -1,6 +1,7 @@
 using System.Threading;
 using System.Threading.Tasks;
-using MoiraAlertPostprocessor.Domain.Interfaces;
+using MoiraAlertPostprocessor.Infrastructure.NlServices;
+using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
 using MoiraPostprocessor.Domain.Entities;
 
 namespace MoiraPostprocessor.Application.UseCases.ProcessAlert
