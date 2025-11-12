@@ -45,8 +45,12 @@ builder.Services.Configure<TelegramAlertOptions>(
 
 builder.Services.AddHttpClient(); // для внутренних нужд Telegram.Bot (если понадобится)
 builder.Services.AddSingleton<IMoiraAlertChannel, TelegramAlertChannel>();
+builder.Services.AddHostedService<TelegramUpdateWorker>();
 
-builder.Services.AddAutoMapper(typeof(MoiraMappingProfile));
+builder.Services.AddAutoMapper(cfg =>
+{
+    cfg.AddProfile<MoiraMappingProfile>();
+});
 
 var app = builder.Build();
 

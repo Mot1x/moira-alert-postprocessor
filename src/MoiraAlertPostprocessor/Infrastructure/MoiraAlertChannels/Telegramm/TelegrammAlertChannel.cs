@@ -1,20 +1,18 @@
-﻿using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
+﻿using Microsoft.Extensions.Options;
 using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
-using System;
-using System.Net.Http.Json;
 using System.Text.Json;
-using System.Threading.Tasks;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
+using Telegram.Bot.Types.Enums;
 
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
 
 public class TelegramAlertChannel : IMoiraAlertChannel
 {
     private readonly TelegramBotClient _botClient;
-    private readonly string _chatId;
+    private readonly string _channelChatId;
+    private readonly string? _discussionGroupChatId;
     private readonly ILogger<TelegramAlertChannel> _logger;
 
     public TelegramAlertChannel(
@@ -22,14 +20,14 @@ public class TelegramAlertChannel : IMoiraAlertChannel
         ILogger<TelegramAlertChannel> logger)
     {
         var opts = options?.Value ?? throw new ArgumentNullException(nameof(options));
-
         if (string.IsNullOrWhiteSpace(opts.BotToken))
-            throw new ArgumentException("BotToken не может быть пустым", nameof(opts.BotToken));
+            throw new ArgumentException("BotToken не может быть пустым", nameof(options));
         if (string.IsNullOrWhiteSpace(opts.ChatId))
-            throw new ArgumentException("ChatId не может быть пустым", nameof(opts.ChatId));
+            throw new ArgumentException("ChatId не может быть пустым", nameof(options));
 
         _botClient = new TelegramBotClient(opts.BotToken);
-        _chatId = opts.ChatId;
+        _channelChatId = opts.ChatId;
+        _discussionGroupChatId = opts.DiscussionGroupChatId;
         _logger = logger;
     }
 
@@ -37,11 +35,9 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     {
         try
         {
-            // Преобразуем JsonContent → string (с pretty-print)
             using var stream = msg.ReadAsStream();
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
             var jsonText = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
-
             await SendAlertAsync(jsonText, cancellationToken);
         }
         catch (OperationCanceledException)
@@ -51,10 +47,8 @@ public class TelegramAlertChannel : IMoiraAlertChannel
         }
         catch (ApiRequestException ex)
         {
-            _logger.LogError(ex,
-                "Ошибка Telegram API ({ErrorCode}): {Message}",
-                ex.ErrorCode, ex.Message);
-            throw; // или swallow, если нужно
+            _logger.LogError(ex, "Ошибка Telegram API ({ErrorCode}): {Message}", ex.ErrorCode, ex.Message);
+            throw;
         }
         catch (Exception ex)
         {
@@ -63,28 +57,42 @@ public class TelegramAlertChannel : IMoiraAlertChannel
         }
     }
 
+    public async Task SendReplyToPostAsync(int channelPostMessageId, string text, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(_discussionGroupChatId))
+            throw new InvalidOperationException("DiscussionGroupChatId не задан в настройках, отправка ответа под постом невозможна.");
+
+        const int MaxMessageLength = 4096;
+        var message = text.Length <= MaxMessageLength ? text : text[..MaxMessageLength] + "\n\n[... обрезано]";
+
+        await _botClient.SendMessage(
+            chatId: new ChatId(_discussionGroupChatId),
+            text: message,
+            messageThreadId: channelPostMessageId,
+            parseMode: ParseMode.Html,
+            linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
+            cancellationToken: ct
+        );
+    }
+
     private async Task SendAlertAsync(string jsonText, CancellationToken ct)
     {
         const int MaxMessageLength = 4096;
-        var message = jsonText.Length <= MaxMessageLength
-            ? jsonText
-            : jsonText[..MaxMessageLength] + "\n\n[... обрезано]";
-
-        // Используем <pre> + HTML-экранирование для читаемости
+        var message = jsonText.Length <= MaxMessageLength ? jsonText : jsonText[..MaxMessageLength] + "\n\n[... обрезано]";
         var escaped = EscapeHtml(message);
         var formatted = $"<pre>{escaped}</pre>";
 
-        await _botClient.SendTextMessageAsync(
-            chatId: _chatId,
+        await _botClient.SendMessage(
+            chatId: new ChatId(_channelChatId),
             text: formatted,
             parseMode: ParseMode.Html,
-            disableWebPagePreview: true,
+            linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
             cancellationToken: ct
         );
     }
 
     private static string EscapeHtml(string s) =>
         s.Replace("&", "&amp;")
-         .Replace("<", "<")
-         .Replace(">", ">");
+         .Replace("<", "&lt;")
+         .Replace(">", "&gt;");
 }

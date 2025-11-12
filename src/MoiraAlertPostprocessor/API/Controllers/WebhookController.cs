@@ -37,7 +37,7 @@ public class WebhookController : ControllerBase
         var response = await _processAlertUseCase.ExecuteAsync(new ProcessAlertRequest(domain), cancellationToken);
         var outDto = _mapper.Map<OutgoingSuggestionDto>(response.Suggestion);
 
-        await _moiraAlertChannel.AlertUsersAsync(outDto); // тут надо с типами работать мне некогда
+        await _moiraAlertChannel.AlertUsersAsync(JsonContent.Create(outDto), cancellationToken);
 
         try
         {

@@ -6,4 +6,5 @@ public class TelegramAlertOptions
 
     public string BotToken { get; set; } = string.Empty;
     public string ChatId { get; set; } = string.Empty;
+    public string? DiscussionGroupChatId { get; set; }
 }
