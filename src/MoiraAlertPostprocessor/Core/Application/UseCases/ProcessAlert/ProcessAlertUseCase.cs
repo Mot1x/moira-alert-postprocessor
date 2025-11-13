@@ -19,10 +19,8 @@ namespace MoiraPostprocessor.Application.UseCases.ProcessAlert
 
         public async Task<ProcessAlertResponse> ExecuteAsync(ProcessAlertRequest request, CancellationToken cancellationToken = default)
         {
-            // persist incoming alert for audit/troubleshooting
             await _alertRepository.SaveAsync(request.Alert, cancellationToken);
 
-            // call NLP to get suggestion
             var suggestion = await _nlpService.GetSuggestionAsync(request.Alert, cancellationToken);
 
             return new ProcessAlertResponse(suggestion);
