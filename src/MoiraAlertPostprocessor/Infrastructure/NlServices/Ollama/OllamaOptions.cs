@@ -3,7 +3,7 @@
 namespace MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 
 /// <summary>
-/// ToDO!!!
+/// Настройки клиента Ollama: endpoint, модель и таймаут.
 /// </summary>
 public class OllamaOptions
 {

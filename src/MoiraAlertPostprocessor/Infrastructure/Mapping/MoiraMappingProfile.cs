@@ -4,7 +4,7 @@ using MoiraAlertPostprocessor.API.Models.Response;
 using MoiraAlertPostprocessor.Domain.Entities;
 using MoiraPostprocessor.Domain.Entities;
 
-namespace MoiraAlertPostprocessor.Mapping;
+namespace MoiraAlertPostprocessor.Infrastructure.Mapping;
 
 public class MoiraMappingProfile : Profile
 {
@@ -33,7 +33,9 @@ public class MoiraMappingProfile : Profile
         CreateMap<Suggestion, OutgoingSuggestionDto>()
             .ForMember(dest => dest.Summary, opt => opt.MapFrom(src => src.Summary))
             .ForMember(dest => dest.Details, opt => opt.MapFrom(src => src.Details))
-            .ForMember(dest => dest.Actions, opt => opt.MapFrom(src => src.Actions ?? Enumerable.Empty<string>()));
+            .ForMember(dest => dest.Actions, opt => opt.MapFrom(src => src.Actions ?? Enumerable.Empty<string>()))
+            .ForMember(dest => dest.AnalysisStatus, opt => opt.MapFrom(src => src.AnalysisStatus))
+            .ForMember(dest => dest.IsActionableByMcp, opt => opt.MapFrom(src => src.IsActionableByMcp));
     }
 
     private static Trigger? MapTrigger(TriggerDto? dto) =>

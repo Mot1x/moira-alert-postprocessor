@@ -1,11 +1,10 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
+﻿using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
 using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
-using MoiraAlertPostprocessor.Mapping;
+using MoiraAlertPostprocessor.Infrastructure.Mapping;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,10 +20,7 @@ builder.Services.Configure<OllamaOptions>(configuration.GetSection("Ollama"))
     .AddSingleton<OllamaOptions>();
 
 // Framework
-builder.Services.AddControllers().AddJsonOptions(opts =>
-{
-    // keep default System.Text.Json camelCase
-});
+builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // Ports -> Adapters
@@ -33,8 +29,18 @@ builder.Services.AddSingleton<IAlertRepository, MoiraAlertPostprocessor.Infrastr
 // Register HTTP client for Ollama
 builder.Services.AddHttpClient<OllamaClient>();
 
-// Use Ollama as the only NLP provider
-builder.Services.AddSingleton<INlpService>(sp => sp.GetRequiredService<OllamaClient>());
+// NLP provider registration with safe fallback
+var ollamaSection = configuration.GetSection("Ollama");
+var ollamaEndpoint = ollamaSection["Endpoint"];
+var ollamaModel = ollamaSection["Model"];
+if (!string.IsNullOrWhiteSpace(ollamaEndpoint) && !string.IsNullOrWhiteSpace(ollamaModel))
+{
+    builder.Services.AddSingleton<INlpService>(sp => sp.GetRequiredService<OllamaClient>());
+}
+else
+{
+    builder.Services.AddSingleton<INlpService, MoiraAlertPostprocessor.Infrastructure.NlServices.SafeFallbackNlpService>();
+}
 
 // UseCase and controllers
 builder.Services.AddTransient<MoiraPostprocessor.Application.UseCases.ProcessAlert.ProcessAlertUseCase>();
@@ -44,8 +50,20 @@ builder.Services.Configure<TelegramAlertOptions>(
 );
 
 builder.Services.AddHttpClient(); // для внутренних нужд Telegram.Bot (если понадобится)
-builder.Services.AddSingleton<IMoiraAlertChannel, TelegramAlertChannel>();
-builder.Services.AddHostedService<TelegramUpdateWorker>();
+
+// Telegram channel registration with safe fallback
+var tgSection = configuration.GetSection(TelegramAlertOptions.SectionName);
+var tgToken = tgSection["BotToken"];
+var tgChatId = tgSection["ChatId"];
+if (!string.IsNullOrWhiteSpace(tgToken) && !string.IsNullOrWhiteSpace(tgChatId))
+{
+    builder.Services.AddSingleton<IMoiraAlertChannel, TelegramAlertChannel>();
+    builder.Services.AddHostedService<TelegramUpdateWorker>();
+}
+else
+{
+    builder.Services.AddSingleton<IMoiraAlertChannel, MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.NullAlertChannel>();
+}
 
 builder.Services.AddAutoMapper(cfg =>
 {

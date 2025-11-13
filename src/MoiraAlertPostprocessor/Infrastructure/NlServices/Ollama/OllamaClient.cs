@@ -1,5 +1,4 @@
-﻿using System.Net.Http;
-using System.Net.Http.Json;
+﻿using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MoiraAlertPostprocessor.Domain.Entities;
@@ -15,12 +14,27 @@ public class OllamaClient : INlpService
     {
         _http = http;
         _options = options.Value;
+        if (_options.TimeoutSeconds <= 0) _options = new OllamaOptions
+        {
+            Endpoint = _options.Endpoint,
+            Model = _options.Model,
+            TimeoutSeconds = 30
+        };
         _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
         Console.WriteLine($"[Startup] NLP provider: Ollama, endpoint={_options.Endpoint}, model={_options.Model}");
     }
 
     public async Task<Suggestion> GetSuggestionAsync(MoiraAlert alert, CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrWhiteSpace(_options.Endpoint) || string.IsNullOrWhiteSpace(_options.Model))
+        {
+            return new Suggestion(
+                "NLP не сконфигурирован",
+                "Отсутствуют настройки Ollama.Endpoint/Model. Задайте их через appsettings.json, переменные окружения или docker-compose.yml.",
+                new List<string>()
+            );
+        }
+
         var payload = new
         {
             model = _options.Model,
@@ -28,12 +42,48 @@ public class OllamaClient : INlpService
             stream = false
         };
 
-        using var resp = await _http.PostAsJsonAsync(_options.Endpoint, payload, cancellationToken);
-        resp.EnsureSuccessStatusCode();
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await _http.PostAsJsonAsync(_options.Endpoint, payload, cancellationToken);
+        }
+        catch (TaskCanceledException tex)
+        {
+            return new Suggestion(
+                "Таймаут запроса к NLP",
+                tex.Message,
+                new List<string>()
+            );
+        }
+        catch (HttpRequestException hrex)
+        {
+            return new Suggestion(
+                "Сетевой сбой при обращении к NLP",
+                $"{hrex.Message}. Проверьте, запущен ли Ollama на {_options.Endpoint} и доступна ли модель '{_options.Model}'.",
+                new List<string>()
+            );
+        }
+        catch (Exception ex)
+        {
+            return new Suggestion(
+                "Неожиданная ошибка при запросе к NLP",
+                ex.Message,
+                new List<string>()
+            );
+        }
 
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(cancellationToken);
+            return new Suggestion(
+                $"Ошибка запроса к NLP: {(int)resp.StatusCode} {resp.ReasonPhrase}",
+                body,
+                new List<string>()
+            );
+        }
         var json = await resp.Content.ReadAsStringAsync(cancellationToken);
 
-        // Try parse common shapes
+        // Попытка извлечения текста от провайдера
         string text = json;
         try
         {
@@ -58,24 +108,58 @@ public class OllamaClient : INlpService
         }
         catch
         {
-            // leave raw json
+            // оставить как есть
         }
 
-        var summary = text?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "No summary";
-        var details = text ?? string.Empty;
-        var actions = ExtractActions(text ?? string.Empty);
+        // Попытка структурированного JSON-парсинга
+        var extracted = OllamaResponseParser.TryParse(text);
+        if (extracted != null)
+        {
+            var telegram = OllamaResponseParser.ToTelegramMarkup(extracted);
+            var actions = new List<string>();
+            if (!string.IsNullOrWhiteSpace(extracted.suggested_solution?.command))
+            {
+                // Разбиение потенциальной последовательности команд
+                actions = extracted.suggested_solution.command
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => s.Length > 0)
+                    .ToList();
+            }
 
-        return new Suggestion(summary, details, actions);
+            var summary = extracted.problem_summary ?? "Нет краткого описания";
+            return new Suggestion(summary, telegram, actions,
+                analysisStatus: extracted.analysis_status,
+                isActionable: extracted.is_actionable_by_mcp);
+        }
+
+        // Fallback на старую логику
+        var summaryFallback = text?.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "No summary";
+        var detailsFallback = text ?? string.Empty;
+        var actionsFallback = ExtractActions(text ?? string.Empty);
+        return new Suggestion(summaryFallback, detailsFallback, actionsFallback);
     }
 
     private string BuildPrompt(MoiraAlert alert)
     {
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("You are an observability assistant. Given the Moira alert below produce:");
-        sb.AppendLine("1) Short summary of probable root cause.");
-        sb.AppendLine("2) Detailed explanation.");
-        sb.AppendLine("3) Concrete remediation steps (bullet list).");
+        var sb = new StringBuilder();
+        // Новый строгий JSON-инструктаж
+        sb.AppendLine("Ты — ассистент по наблюдаемости. Проанализируй Moira alert и ответь СТРОГО в формате JSON без пояснений, без markdown, без комментариев.");
+        sb.AppendLine("Ответь строго в формате JSON. Используй следующую схему:");
+        sb.AppendLine("{");
+        sb.AppendLine("  \"analysis_status\": \"string (e.g. 'root_cause_identified' | 'needs_more_data')\",");
+        sb.AppendLine("  \"problem_summary\": \"string (1-2 предложения краткого корневого анализа)\",");
+        sb.AppendLine("  \"suggested_solution\": {");
+        sb.AppendLine("    \"type\": \"string (e.g. 'config_change' | 'scale_out' | 'investigate')\",");
+        sb.AppendLine("    \"description\": \"string (пошаговые действия, безопасные сначала)\",");
+        sb.AppendLine("    \"command\": \"string (одна безопасная команда или последовательность; если нет — пустая строка)\"");
+        sb.AppendLine("  },");
+        sb.AppendLine("  \"is_actionable_by_mcp\": true,");
+        sb.AppendLine("  \"confidence\": 0.0");
+        sb.AppendLine("}");
+        sb.AppendLine("Только JSON. Никакого текста вне {}.");
         sb.AppendLine();
+
         sb.AppendLine("Trigger:");
         sb.AppendLine($"- Id: {alert.Trigger?.Id}");
         sb.AppendLine($"- Name: {alert.Trigger?.Name}");
@@ -122,6 +206,7 @@ public class OllamaClient : INlpService
         return sb.ToString();
     }
 
+    // Старый метод ExtractActions оставлен для fallback
     private static List<string>? ExtractActions(string text)
     {
         var actions = new List<string>();

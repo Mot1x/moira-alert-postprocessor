@@ -1,10 +1,20 @@
 namespace MoiraAlertPostprocessor.Domain.Entities;
 
-public class Suggestion(string summary, string details, IEnumerable<string>? actions = null)
+public class Suggestion
 {
-    public string Summary { get; } = summary;
-    public string Details { get; } = details;
-    public IReadOnlyCollection<string> Actions { get; } = actions == null
-        ? new List<string>()
-        : new List<string>(actions);
+    public Suggestion(string summary, string details, IEnumerable<string>? actions = null,
+        string? analysisStatus = null, bool? isActionable = null)
+    {
+        Summary = summary;
+        Details = details;
+        Actions = actions == null ? new List<string>() : new List<string>(actions);
+        AnalysisStatus = analysisStatus;
+        IsActionableByMcp = isActionable;
+    }
+
+    public string Summary { get; }
+    public string Details { get; }
+    public IReadOnlyCollection<string> Actions { get; }
+    public string? AnalysisStatus { get; }
+    public bool? IsActionableByMcp { get; }
 }
