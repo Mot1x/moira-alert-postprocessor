@@ -2,6 +2,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using MoiraAlertPostprocessor.Domain.Entities;
+using MoiraAlertPostprocessor.Infrastructure.MCP;
 
 namespace MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 
@@ -9,17 +10,20 @@ public class OllamaClient : INlpService
 {
     private readonly HttpClient _http;
     private readonly OllamaOptions _options;
+    private readonly IToolExecuter _toolExecuter;
 
-    public OllamaClient(HttpClient http, IOptions<OllamaOptions> options)
+    public OllamaClient(HttpClient http, IOptions<OllamaOptions> options, IToolExecuter toolExecuter)
     {
         _http = http;
+        _toolExecuter = toolExecuter;
         _options = options.Value;
-        if (_options.TimeoutSeconds <= 0) _options = new OllamaOptions
-        {
-            Endpoint = _options.Endpoint,
-            Model = _options.Model,
-            TimeoutSeconds = 30
-        };
+        if (_options.TimeoutSeconds <= 0)
+            _options = new OllamaOptions
+            {
+                Endpoint = _options.Endpoint,
+                Model = _options.Model,
+                TimeoutSeconds = 30
+            };
         _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
         Console.WriteLine($"[Startup] NLP provider: Ollama, endpoint={_options.Endpoint}, model={_options.Model}");
     }
@@ -81,10 +85,11 @@ public class OllamaClient : INlpService
                 new List<string>()
             );
         }
+
         var json = await resp.Content.ReadAsStringAsync(cancellationToken);
 
         // Попытка извлечения текста от провайдера
-        string text = json;
+        var text = json;
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -115,22 +120,23 @@ public class OllamaClient : INlpService
         var extracted = OllamaResponseParser.TryParse(text);
         if (extracted != null)
         {
+            var executionResult = await ProcessActions(extracted, cancellationToken);
             var telegram = OllamaResponseParser.ToTelegramMarkup(extracted);
             var actions = new List<string>();
-            if (!string.IsNullOrWhiteSpace(extracted.suggested_solution?.command))
+            if (!string.IsNullOrWhiteSpace(extracted.SuggestedSolution?.Command))
             {
                 // Разбиение потенциальной последовательности команд
-                actions = extracted.suggested_solution.command
+                actions = extracted.SuggestedSolution.Command
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                     .Select(s => s.Trim())
                     .Where(s => s.Length > 0)
                     .ToList();
             }
 
-            var summary = extracted.problem_summary ?? "Нет краткого описания";
+            var summary = extracted.ProblemSummary ?? "Нет краткого описания";
             return new Suggestion(summary, telegram, actions,
-                analysisStatus: extracted.analysis_status,
-                isActionable: extracted.is_actionable_by_mcp);
+                analysisStatus: extracted.AnalysisStatus,
+                isActionable: extracted.IsActionableByMcp, executionResult);
         }
 
         // Fallback на старую логику
@@ -140,11 +146,67 @@ public class OllamaClient : INlpService
         return new Suggestion(summaryFallback, detailsFallback, actionsFallback);
     }
 
+    private async Task<string?> ProcessActions(OllamaStructuredSolution extracted, CancellationToken cancellationToken = default)
+    {
+        string? executionResult = null;
+
+        if (extracted.IsActionableByMcp == true
+            && !string.IsNullOrEmpty(extracted.SuggestedSolution?.ToolName)
+            && extracted.SuggestedSolution.ToolArgs != null)
+        {
+            try
+            {
+                var toolResult = await _toolExecuter.ExecuteAsync(
+                    extracted.SuggestedSolution.ToolName,
+                    extracted.SuggestedSolution.ToolArgs,
+                    cancellationToken
+                );
+                executionResult = toolResult.Success
+                    ? $"Выполнено: {toolResult.Output}"
+                    : $"Ошибка: {toolResult.Error}";
+            }
+            catch (Exception ex)
+            {
+                executionResult = $"Исключение при выполнении: {ex.Message}";
+            }
+        }
+
+        return executionResult;
+    }
+
     private string BuildPrompt(MoiraAlert alert)
     {
         var sb = new StringBuilder();
         // Новый строгий JSON-инструктаж
-        sb.AppendLine("Ты — ассистент по наблюдаемости. Проанализируй Moira alert и ответь СТРОГО в формате JSON без пояснений, без markdown, без комментариев.");
+        sb.AppendLine(
+            "Ты — ассистент по наблюдаемости. Проанализируй Moira alert и ответь СТРОГО в формате JSON без пояснений, без markdown, без комментариев.");
+        sb.AppendLine();
+        sb.AppendLine("ДОСТУПНЫЕ ИНСТРУМЕНТЫ (MCP):");
+        sb.AppendLine();
+        sb.AppendLine("1. execute_on_api — выполняет HTTP-запрос к внутреннему API.");
+        sb.AppendLine("   Формат вызова:");
+        sb.AppendLine("   {");
+        sb.AppendLine("     \"tool_name\": \"execute_on_api\",");
+        sb.AppendLine("     \"tool_args\": {");
+        sb.AppendLine("       \"url\": \"https://внутренний-хост/путь\",");
+        sb.AppendLine("       \"method\": \"POST\",");
+        sb.AppendLine("       \"body\": { \"ключ\": \"значение\" }");
+        sb.AppendLine("     }");
+        sb.AppendLine("   }");
+        sb.AppendLine();
+        sb.AppendLine("   Требования:");
+        sb.AppendLine("   - URL должен быть внутренним (например, http://k8s-api.local, http://monitoring.internal)");
+        sb.AppendLine("   - Метод: GET, POST, PUT или DELETE");
+        sb.AppendLine("   - Тело (body) — JSON-объект (для GET можно опустить)");
+        sb.AppendLine("   - Не указывай заголовки — они добавляются автоматически");
+        sb.AppendLine();
+        sb.AppendLine("Если проблема решается одним из инструментов:");
+        sb.AppendLine("- Установи \"is_actionable_by_mcp\": true");
+        sb.AppendLine("- В \"suggested_solution\" укажи:");
+        sb.AppendLine("    \"tool_name\": \"имя_инструмента\",");
+        sb.AppendLine("    \"tool_args\": { \"параметр1\": значение1, ... }");
+        sb.AppendLine("- НЕ используй поле \"command\" — оно устарело.");
+        sb.AppendLine();
         sb.AppendLine("Ответь строго в формате JSON. Используй следующую схему:");
         sb.AppendLine("{");
         sb.AppendLine("  \"analysis_status\": \"string (e.g. 'root_cause_identified' | 'needs_more_data')\",");
@@ -152,7 +214,8 @@ public class OllamaClient : INlpService
         sb.AppendLine("  \"suggested_solution\": {");
         sb.AppendLine("    \"type\": \"string (e.g. 'config_change' | 'scale_out' | 'investigate')\",");
         sb.AppendLine("    \"description\": \"string (пошаговые действия, безопасные сначала)\",");
-        sb.AppendLine("    \"command\": \"string (одна безопасная команда или последовательность; если нет — пустая строка)\"");
+        sb.AppendLine(
+            "    \"command\": \"string (одна безопасная команда или последовательность; если нет — пустая строка)\"");
         sb.AppendLine("  },");
         sb.AppendLine("  \"is_actionable_by_mcp\": true,");
         sb.AppendLine("  \"confidence\": 0.0");

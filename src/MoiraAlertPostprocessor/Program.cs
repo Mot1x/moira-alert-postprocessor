@@ -5,6 +5,7 @@ using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.Mapping;
+using MoiraAlertPostprocessor.Infrastructure.MCP;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,7 +25,10 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // Ports -> Adapters
-builder.Services.AddSingleton<IAlertRepository, MoiraAlertPostprocessor.Infrastructure.Repositories.InMemoryAlertRepository>();
+builder.Services
+    .AddSingleton<IAlertRepository, MoiraAlertPostprocessor.Infrastructure.Repositories.InMemoryAlertRepository>();
+builder.Services.AddSingleton<IToolExecuter, McpClient>();
+builder.Services.AddSingleton<ApiToolExecutor>();
 
 // Register HTTP client for Ollama
 builder.Services.AddHttpClient<OllamaClient>();
@@ -39,7 +43,7 @@ if (!string.IsNullOrWhiteSpace(ollamaEndpoint) && !string.IsNullOrWhiteSpace(oll
 }
 else
 {
-    builder.Services.AddSingleton<INlpService, MoiraAlertPostprocessor.Infrastructure.NlServices.SafeFallbackNlpService>();
+    builder.Services.AddSingleton<INlpService, SafeFallbackNlpService>();
 }
 
 // UseCase and controllers
@@ -62,13 +66,11 @@ if (!string.IsNullOrWhiteSpace(tgToken) && !string.IsNullOrWhiteSpace(tgChatId))
 }
 else
 {
-    builder.Services.AddSingleton<IMoiraAlertChannel, MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.NullAlertChannel>();
+    builder.Services
+        .AddSingleton<IMoiraAlertChannel, MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.NullAlertChannel>();
 }
 
-builder.Services.AddAutoMapper(cfg =>
-{
-    cfg.AddProfile<MoiraMappingProfile>();
-});
+builder.Services.AddAutoMapper(cfg => { cfg.AddProfile<MoiraMappingProfile>(); });
 
 var app = builder.Build();
 
