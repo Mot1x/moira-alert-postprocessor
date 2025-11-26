@@ -1,6 +1,5 @@
-//{
-//  "sdk": {
-//    "rollForward": "latestMajor",
-//    "allowPrerelease": false
-//  }
-//}
+{
+  "sdk": {
+    "version": "9.0.301"
+  }
+}

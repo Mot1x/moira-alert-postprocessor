@@ -34,5 +34,13 @@ public class NullAlertChannel : IMoiraAlertChannel
         _logger.LogInformation("[NullAlertChannel] would reply to post {Id}: {Text}", channelPostMessageId, text);
         return Task.CompletedTask;
     }
+
+    public Task SendReplyToMessageAsync(long chatId, int replyToMessageId, string text,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[NullAlertChannel] would reply in chat {ChatId} to message {MessageId}: {Text}",
+            chatId, replyToMessageId, text);
+        return Task.CompletedTask;
+    }
 }
 

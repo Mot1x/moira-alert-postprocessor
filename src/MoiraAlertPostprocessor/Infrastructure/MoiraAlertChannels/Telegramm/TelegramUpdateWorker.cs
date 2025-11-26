@@ -1,10 +1,14 @@
 ﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
 
@@ -13,10 +17,16 @@ public class TelegramUpdateWorker : BackgroundService
     private readonly ILogger<TelegramUpdateWorker> _logger;
     private readonly TelegramBotClient _botClient;
     private readonly IMoiraAlertChannel _channel;
+    private readonly ITelegramPostParser _postParser;
+    private readonly ITelegramReplyFormatter _replyFormatter;
+    private readonly INlpService _nlpService;
 
     public TelegramUpdateWorker(
         IOptions<TelegramAlertOptions> options,
         IMoiraAlertChannel channel,
+        ITelegramPostParser postParser,
+        ITelegramReplyFormatter replyFormatter,
+        INlpService nlpService,
         ILogger<TelegramUpdateWorker> logger)
     {
         var opts = options?.Value ?? throw new ArgumentNullException(nameof(options));
@@ -26,6 +36,9 @@ public class TelegramUpdateWorker : BackgroundService
         _logger = logger;
         _botClient = new TelegramBotClient(opts.BotToken);
         _channel = channel;
+        _postParser = postParser;
+        _replyFormatter = replyFormatter;
+        _nlpService = nlpService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -50,9 +63,15 @@ public class TelegramUpdateWorker : BackgroundService
     {
         try
         {
-            if (update.Type == UpdateType.ChannelPost && update.ChannelPost is { } post)
+            if (update.Type == UpdateType.Message && update.Message is { } msg)
             {
-                await _channel.SendReplyToPostAsync(post.MessageId, "Hello World!", ct);
+                if (!_postParser.TryParse(msg, out var alert))
+                    return;
+
+                var suggestion = await _nlpService.GetSuggestionAsync(alert!, ct);
+                var reply = _replyFormatter.Format(suggestion);
+
+                await _channel.SendReplyToMessageAsync(msg.Chat.Id, msg.MessageId, reply, ct);
             }
         }
         catch (Exception ex)

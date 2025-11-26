@@ -65,11 +65,42 @@ public class TelegramAlertChannel : IMoiraAlertChannel
         const int MaxMessageLength = 4096;
         var message = text.Length <= MaxMessageLength ? text : text[..MaxMessageLength] + "\n\n[... обрезано]";
 
+        try
+        {
+            await _botClient.SendMessage(
+                chatId: new ChatId(_discussionGroupChatId),
+                text: message,
+                messageThreadId: channelPostMessageId,
+                parseMode: ParseMode.Html,
+                linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
+                cancellationToken: ct
+            );
+        }
+        catch (ApiRequestException ex) when (ex.ErrorCode == 400 && ex.Message.Contains("message thread not found", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(ex, "Тред с id {MessageId} не найден в чате {ChatId}, отправляем сообщение без thread id.", channelPostMessageId, _discussionGroupChatId);
+
+            await _botClient.SendMessage(
+                chatId: new ChatId(_discussionGroupChatId),
+                text: message,
+                parseMode: ParseMode.Html,
+                linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
+                cancellationToken: ct
+            );
+        }
+    }
+
+    public async Task SendReplyToMessageAsync(long chatId, int replyToMessageId, string text,
+        CancellationToken ct = default)
+    {
+        const int MaxMessageLength = 4096;
+        var message = text.Length <= MaxMessageLength ? text : text[..MaxMessageLength] + "\n\n[... обрезано]";
+
         await _botClient.SendMessage(
-            chatId: new ChatId(_discussionGroupChatId),
+            chatId: new ChatId(chatId),
             text: message,
-            messageThreadId: channelPostMessageId,
             parseMode: ParseMode.Html,
+            replyParameters: new ReplyParameters { MessageId = replyToMessageId },
             linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
             cancellationToken: ct
         );

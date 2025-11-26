@@ -5,6 +5,8 @@ using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.Mapping;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -51,6 +53,10 @@ builder.Services.Configure<TelegramAlertOptions>(
 
 builder.Services.AddHttpClient(); // для внутренних нужд Telegram.Bot (если понадобится)
 
+// Telegram parsing/formatting services
+builder.Services.AddSingleton<ITelegramPostParser, JsonMoiraAlertTelegramPostParser>();
+builder.Services.AddSingleton<ITelegramReplyFormatter, TelegramReplyFormatter>();
+
 // Telegram channel registration with safe fallback
 var tgSection = configuration.GetSection(TelegramAlertOptions.SectionName);
 var tgToken = tgSection["BotToken"];
@@ -62,7 +68,7 @@ if (!string.IsNullOrWhiteSpace(tgToken) && !string.IsNullOrWhiteSpace(tgChatId))
 }
 else
 {
-    builder.Services.AddSingleton<IMoiraAlertChannel, MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.NullAlertChannel>();
+    builder.Services.AddSingleton<IMoiraAlertChannel, NullAlertChannel>();
 }
 
 builder.Services.AddAutoMapper(cfg =>
