@@ -7,6 +7,9 @@ using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.Mapping;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Services;
+using MoiraAlertPostprocessor.Infrastructure.Repositories;
+using MoiraAlertPostprocessor.Infrastructure.Services;
+using Prometheus;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,6 +49,8 @@ else
 
 // UseCase and controllers
 builder.Services.AddTransient<MoiraPostprocessor.Application.UseCases.ProcessAlert.ProcessAlertUseCase>();
+builder.Services.AddSingleton<IVoteRepository, InMemoryVoteRepository>();
+builder.Services.AddSingleton<FeedbackMetricsService>();
 
 builder.Services.Configure<TelegramAlertOptions>(
     builder.Configuration.GetSection(TelegramAlertOptions.SectionName)
@@ -77,6 +82,9 @@ builder.Services.AddAutoMapper(cfg =>
 });
 
 var app = builder.Build();
+
+app.UseMetricServer(); 
+app.UseHttpMetrics();
 
 // Health-check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "ok", urls }));

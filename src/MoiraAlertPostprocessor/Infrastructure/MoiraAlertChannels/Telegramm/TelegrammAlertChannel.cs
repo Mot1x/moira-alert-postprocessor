@@ -5,6 +5,7 @@ using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
 
@@ -118,6 +119,24 @@ public class TelegramAlertChannel : IMoiraAlertChannel
             text: formatted,
             parseMode: ParseMode.Html,
             linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
+            cancellationToken: ct
+        );
+    }
+    
+    public async Task SendFeedbackButtonsAsync(long chatId, int replyToMessageId, CancellationToken ct)
+    {
+        var keyboard = new InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton.WithCallbackData("👍 Полезно", "vote_like"),
+                InlineKeyboardButton.WithCallbackData("👎 Бесполезно", "vote_dislike")
+            ]
+        ]);
+
+        await _botClient.SendMessage(
+            chatId: new ChatId(chatId),
+            text: "Оцените качество ответа:",
+            replyParameters: new ReplyParameters { MessageId = replyToMessageId },
+            replyMarkup: keyboard,
             cancellationToken: ct
         );
     }

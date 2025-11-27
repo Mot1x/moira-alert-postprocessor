@@ -35,6 +35,12 @@ public class NullAlertChannel : IMoiraAlertChannel
         return Task.CompletedTask;
     }
 
+    public Task SendFeedbackButtonsAsync(long chatId, int replyToMessageId, CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("[NullAlertChannel] would reply to message {ChatId} - {MessageId} with feedback vote", chatId, replyToMessageId);
+        return Task.CompletedTask;
+    }
+
     public Task SendReplyToMessageAsync(long chatId, int replyToMessageId, string text,
         CancellationToken cancellationToken = default)
     {
