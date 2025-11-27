@@ -36,10 +36,9 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     {
         try
         {
-            using var stream = msg.ReadAsStream();
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-            var jsonText = JsonSerializer.Serialize(doc, new JsonSerializerOptions { WriteIndented = true });
-            await SendAlertAsync(jsonText, cancellationToken);
+            using var stream = await msg.ReadAsStreamAsync(cancellationToken);
+            // Отправляем файл JSON в канал
+            await SendAlertFileAsync(stream, cancellationToken);
         }
         catch (OperationCanceledException)
         {
@@ -107,8 +106,27 @@ public class TelegramAlertChannel : IMoiraAlertChannel
         );
     }
 
+    private async Task SendAlertFileAsync(Stream jsonStream, CancellationToken ct)
+    {
+        // Имя файла
+        var fileName = $"moira-trigger-{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.json";
+
+        // Перематываем поток на начало, если возможно
+        if (jsonStream.CanSeek)
+            jsonStream.Seek(0, SeekOrigin.Begin);
+
+        await _botClient.SendDocument(
+            chatId: new ChatId(_channelChatId),
+            document: InputFile.FromStream(jsonStream, fileName),
+            caption: "Moira alert",
+            parseMode: ParseMode.Html,
+            cancellationToken: ct
+        );
+    }
+
     private async Task SendAlertAsync(string jsonText, CancellationToken ct)
     {
+        // Устаревший способ: форматированный текст. Оставляем для совместимости, но больше не используем.
         const int MaxMessageLength = 4096;
         var message = jsonText.Length <= MaxMessageLength ? jsonText : jsonText[..MaxMessageLength] + "\n\n[... обрезано]";
         var escaped = EscapeHtml(message);

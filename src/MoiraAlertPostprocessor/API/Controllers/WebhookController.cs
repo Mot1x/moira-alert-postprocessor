@@ -37,7 +37,8 @@ public class WebhookController : ControllerBase
         var response = await _processAlertUseCase.ExecuteAsync(new ProcessAlertRequest(domain), cancellationToken);
         var outDto = _mapper.Map<OutgoingSuggestionDto>(response.Suggestion);
 
-        await _moiraAlertChannel.AlertUsersAsync(JsonContent.Create(outDto), cancellationToken);
+        // Отправляем в канал исходный триггер как JSON-файл, а не ответ нейросети
+        await _moiraAlertChannel.AlertUsersAsync(JsonContent.Create(dto), cancellationToken);
 
         try
         {

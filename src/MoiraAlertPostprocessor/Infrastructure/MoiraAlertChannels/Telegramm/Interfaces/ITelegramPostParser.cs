@@ -1,6 +1,7 @@
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 
 using MoiraAlertPostprocessor.Domain.Entities;
+using Telegram.Bot;
 using Telegram.Bot.Types;
 
 /// <summary>
@@ -9,5 +10,5 @@ using Telegram.Bot.Types;
 /// </summary>
 public interface ITelegramPostParser
 {
-    bool TryParse(Message post, out MoiraAlert? alert);
+    bool TryParse(ITelegramBotClient botClient, Message post, out MoiraAlert? alert);
 }

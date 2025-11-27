@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 
-public record SuggestedSolution(string? type, string? description, string? command);
+public record SuggestedSolution(string? type, string? description, string? command, List<string>? steps = null);
 public record OllamaStructuredSolution(
     string? analysis_status,
     string? problem_summary,
@@ -34,7 +34,10 @@ internal static class OllamaResponseParser
                 sol = new SuggestedSolution(
                     ss.TryGetProperty("type", out var t) ? t.GetString() : null,
                     ss.TryGetProperty("description", out var d) ? d.GetString() : null,
-                    ss.TryGetProperty("command", out var c) ? c.GetString() : null
+                    ss.TryGetProperty("command", out var c) ? c.GetString() : null,
+                    ss.TryGetProperty("steps", out var st) && st.ValueKind == JsonValueKind.Array
+                        ? st.EnumerateArray().Where(e => e.ValueKind == JsonValueKind.String).Select(e => e.GetString()!).Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+                        : null
                 );
             }
 
@@ -57,38 +60,6 @@ internal static class OllamaResponseParser
         {
             return null;
         }
-    }
-
-    public static string ToTelegramMarkup(OllamaStructuredSolution data)
-    {
-        var sb = new StringBuilder();
-        void Bold(string title, string? value)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-                sb.AppendLine($"*{Escape(title)}* {Escape(value)}");
-        }
-
-        Bold("Анализ:", data.analysis_status);
-        Bold("Проблема:", data.problem_summary);
-
-        if (data.suggested_solution != null)
-        {
-            Bold("Тип решения:", data.suggested_solution.type);
-            if (!string.IsNullOrWhiteSpace(data.suggested_solution.description))
-                sb.AppendLine($"*Решение:* {Escape(data.suggested_solution.description)}");
-            if (!string.IsNullOrWhiteSpace(data.suggested_solution.command))
-            {
-                sb.AppendLine("*Команда:*");
-                sb.AppendLine("```");
-                sb.AppendLine(EscapeCode(data.suggested_solution.command));
-                sb.AppendLine("```");
-            }
-        }
-
-        if (data.is_actionable_by_mcp.HasValue)
-            Bold("Автоматизируемо:", data.is_actionable_by_mcp.Value ? "Да" : "Нет");
-
-        return sb.ToString().TrimEnd();
     }
 
     private static string? ExtractFirstJsonObject(string raw)

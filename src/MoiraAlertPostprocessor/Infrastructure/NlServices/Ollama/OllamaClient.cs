@@ -115,22 +115,35 @@ public class OllamaClient : INlpService
         var extracted = OllamaResponseParser.TryParse(text);
         if (extracted != null)
         {
-            var telegram = OllamaResponseParser.ToTelegramMarkup(extracted);
-            var actions = new List<string>();
-            if (!string.IsNullOrWhiteSpace(extracted.suggested_solution?.command))
+            // steps из JSON
+            var steps = extracted.suggested_solution?.steps ?? new List<string>();
+
+            // Fallback: если steps пустой, пробуем извлечь из description
+            if (steps.Count == 0 && !string.IsNullOrWhiteSpace(extracted.suggested_solution?.description))
             {
-                // Разбиение потенциальной последовательности команд
-                actions = extracted.suggested_solution.command
-                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                    .Select(s => s.Trim())
-                    .Where(s => s.Length > 0)
-                    .ToList();
+                steps = ExtractStepsFromDescription(extracted.suggested_solution.description);
             }
 
+            var rawCommand = extracted.suggested_solution?.command;
+            if (string.IsNullOrWhiteSpace(rawCommand))
+            {
+                rawCommand = TryExtractCommandFallback(extracted.suggested_solution?.description, steps);
+            }
+            else
+            {
+                rawCommand = rawCommand.Trim();
+            }
+            if (!string.IsNullOrWhiteSpace(rawCommand))
+                Console.WriteLine("[NLP] Extracted command: " + rawCommand);
+
             var summary = extracted.problem_summary ?? "Нет краткого описания";
-            return new Suggestion(summary, telegram, actions,
+            var detailsCombined = BuildDetails(extracted);
+            return new Suggestion(summary, detailsCombined, steps,
                 analysisStatus: extracted.analysis_status,
-                isActionable: extracted.is_actionable_by_mcp);
+                isActionable: extracted.is_actionable_by_mcp,
+                solutionType: extracted.suggested_solution?.type,
+                solutionDescription: extracted.suggested_solution?.description,
+                solutionCommand: rawCommand);
         }
 
         // Fallback на старую логику
@@ -138,6 +151,71 @@ public class OllamaClient : INlpService
         var detailsFallback = text ?? string.Empty;
         var actionsFallback = ExtractActions(text ?? string.Empty);
         return new Suggestion(summaryFallback, detailsFallback, actionsFallback);
+    }
+
+    private static List<string> ExtractStepsFromDescription(string description)
+    {
+        var steps = new List<string>();
+        var raw = description.Replace("\r", " ").Trim();
+        if (string.IsNullOrWhiteSpace(raw)) return steps;
+
+        // Пытаемся разбить по номерам "1. ... 2. ..." либо переводам строк
+        var matches = System.Text.RegularExpressions.Regex.Matches(raw, @"\b\d+\.\s+.*?(?=(\b\d+\.\s)|$)", System.Text.RegularExpressions.RegexOptions.Singleline);
+        if (matches.Count > 0)
+        {
+            foreach (System.Text.RegularExpressions.Match m in matches)
+            {
+                var txt = System.Text.RegularExpressions.Regex.Replace(m.Value.Trim(), @"^(\d+\.)\s+", string.Empty).Trim();
+                if (txt.Length > 0) steps.Add(txt);
+            }
+        }
+        else
+        {
+            // Разбиваем по строкам или точкам, но осторожно: сначала строки
+            var lines = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                var t = System.Text.RegularExpressions.Regex.Replace(line.Trim(), @"^(\d+\.)\s+", string.Empty).Trim();
+                if (t.Length > 0) steps.Add(t);
+            }
+            if (steps.Count == 0)
+            {
+                // Последний fallback: делим по '. ' если описаний несколько
+                var parts = raw.Split('.');
+                foreach (var p in parts)
+                {
+                    var t = p.Trim();
+                    if (t.Length > 0) steps.Add(t);
+                }
+            }
+        }
+        return steps;
+    }
+
+    private static List<string>? ExtractActions(string text)
+    {
+        var actions = new List<string>();
+        if (string.IsNullOrEmpty(text))
+            return actions;
+
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        foreach (var line in lines)
+        {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("- ") || trimmed.StartsWith("* ")) actions.Add(trimmed.Substring(2).Trim());
+        }
+
+        return actions;
+    }
+
+    private static string BuildDetails(OllamaStructuredSolution data)
+    {
+        var sb = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(data.problem_summary))
+            sb.AppendLine(data.problem_summary.Trim());
+        if (!string.IsNullOrWhiteSpace(data.suggested_solution?.description))
+            sb.AppendLine(data.suggested_solution.description.Trim());
+        return sb.ToString().Trim();
     }
 
     private string BuildPrompt(MoiraAlert alert)
@@ -151,13 +229,13 @@ public class OllamaClient : INlpService
         sb.AppendLine("  \"problem_summary\": \"string (1-2 предложения краткого корневого анализа)\",");
         sb.AppendLine("  \"suggested_solution\": {");
         sb.AppendLine("    \"type\": \"string (e.g. 'config_change' | 'scale_out' | 'investigate')\",");
-        sb.AppendLine("    \"description\": \"string (пошаговые действия, безопасные сначала)\",");
+        sb.AppendLine("    \"steps\": [ \"строка шага без нумерации\", \"ещё один шаг\" ],");
         sb.AppendLine("    \"command\": \"string (одна безопасная команда или последовательность; если нет — пустая строка)\"");
         sb.AppendLine("  },");
         sb.AppendLine("  \"is_actionable_by_mcp\": true,");
         sb.AppendLine("  \"confidence\": 0.0");
         sb.AppendLine("}");
-        sb.AppendLine("Только JSON. Никакого текста вне {}.");
+        sb.AppendLine("Только JSON. Никакого текста вне {}. 'steps' обязательный массив (может быть пустым). Каждый элемент steps — одна законченная инструкция без ведущих '1.' или '-' и без лишних пробелов. НЕ используй markdown.");
         sb.AppendLine();
 
         sb.AppendLine("Trigger:");
@@ -206,20 +284,35 @@ public class OllamaClient : INlpService
         return sb.ToString();
     }
 
-    // Старый метод ExtractActions оставлен для fallback
-    private static List<string>? ExtractActions(string text)
+    private static string? TryExtractCommandFallback(string? description, List<string> steps)
     {
-        var actions = new List<string>();
-        if (string.IsNullOrEmpty(text))
-            return actions;
+        // Ищем первую строку, похожую на команду (начинается с curl, kubectl, docker, systemctl, ping, tail, grep, cat)
+        IEnumerable<string> sources = Enumerable.Empty<string>();
+        if (!string.IsNullOrWhiteSpace(description))
+            sources = sources.Append(description);
+        if (steps != null && steps.Count > 0)
+            sources = sources.Concat(steps);
 
-        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        foreach (var line in lines)
+        foreach (var s in sources)
         {
-            var trimmed = line.Trim();
-            if (trimmed.StartsWith("- ") || trimmed.StartsWith("* ")) actions.Add(trimmed.Substring(2).Trim());
+            var lines = s.Split('\n');
+            foreach (var line in lines)
+            {
+                var candidate = line.Trim();
+                if (candidate.Length == 0) continue;
+                if (StartsWithCommand(candidate)) return candidate;
+            }
         }
+        return null;
 
-        return actions;
+        static bool StartsWithCommand(string s) =>
+            s.StartsWith("curl ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("kubectl ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("docker ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("systemctl ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("ping ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("grep ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("cat ", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("tail ", StringComparison.OrdinalIgnoreCase);
     }
 }

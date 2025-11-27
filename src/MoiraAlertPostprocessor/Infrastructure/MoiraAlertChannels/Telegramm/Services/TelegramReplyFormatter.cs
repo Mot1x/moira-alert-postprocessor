@@ -8,35 +8,73 @@ public class TelegramReplyFormatter : ITelegramReplyFormatter
 {
     public string Format(Suggestion suggestion)
     {
-        // Попробуем понять, находится ли Details уже в Telegram-markup.
-        // Предположим, что Suggestion.Details сформировано OllamaResponseParser.ToTelegramMarkup.
         var sb = new StringBuilder();
+
+        // Статус анализа
+        if (!string.IsNullOrWhiteSpace(suggestion.AnalysisStatus))
+            sb.AppendLine($"<b>Статус анализа:</b> {Escape(suggestion.AnalysisStatus)}");
+
+        // Проблема
         if (!string.IsNullOrWhiteSpace(suggestion.Summary))
-        {
-            sb.AppendLine($"<b>Сводка:</b> {Escape(suggestion.Summary)}");
-            sb.AppendLine();
-        }
+            sb.AppendLine($"<b>Проблема:</b> {Escape(suggestion.Summary)}");
+        else if (!string.IsNullOrWhiteSpace(suggestion.Details))
+            sb.AppendLine($"<b>Проблема:</b> {Escape(ExtractProblem(suggestion.Details))}");
 
-        if (!string.IsNullOrWhiteSpace(suggestion.Details))
-        {
-            sb.AppendLine(suggestion.Details);
-            sb.AppendLine();
-        }
+        // Тип решения (берём напрямую из SolutionType)
+        if (!string.IsNullOrWhiteSpace(suggestion.SolutionType))
+            sb.AppendLine($"<b>Тип решения:</b> {Escape(suggestion.SolutionType)}");
 
-        if (suggestion.Actions != null && suggestion.Actions.Any())
+        // Решение: нумерованные шаги из SolutionDescription (разбиваем по точке/переводу строки) или Actions
+        var steps = suggestion.Actions.ToList();
+        if (steps.Count > 0)
         {
-            sb.AppendLine("<b>Действия:</b>");
+            sb.AppendLine("<b>Решение:</b>");
             sb.AppendLine("<pre>");
-            foreach (var act in suggestion.Actions)
-                sb.AppendLine(Escape(act));
+            for (int i = 0; i < steps.Count; i++)
+                sb.AppendLine($"    {i + 1}. {Escape(steps[i])}");
             sb.AppendLine("</pre>");
         }
 
-        if (!string.IsNullOrWhiteSpace(suggestion.AnalysisStatus))
-            sb.AppendLine($"<i>Статус анализа: {Escape(suggestion.AnalysisStatus)}</i>");
+        // Команда
+        if (!string.IsNullOrWhiteSpace(suggestion.SolutionCommand))
+        {
+            sb.AppendLine("<b>Команда:</b>");
+            sb.AppendLine("<pre>" + EscapeCode(suggestion.SolutionCommand) + "</pre>");
+        }
+
+        // Автоматизируемо
+        if (suggestion.IsActionableByMcp.HasValue)
+            sb.AppendLine($"<b>Автоматизируемо:</b> {(suggestion.IsActionableByMcp.Value ? "Да" : "Нет")}");
 
         return sb.ToString().TrimEnd();
-
-        static string Escape(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
     }
+
+    private static List<string> ExtractSteps(Suggestion suggestion)
+    {
+        // Упразднено: теперь steps попадают напрямую в Suggestion.Actions из массива suggested_solution.steps.
+        return suggestion.Actions.ToList();
+    }
+
+    static string Escape(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+    static string EscapeCode(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("`", "&#96;");
+
+    static string ExtractProblem(string details)
+    {
+        // Пытаемся извлечь первую смысловую строку как описание проблемы.
+        // Если в тексте есть маркер '*Проблема:*', забираем его содержимое.
+        var idx = details.IndexOf("Проблема:", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var after = details.Substring(idx + "Проблема:".Length).Trim().TrimStart('*', ':');
+            var endLine = after.IndexOf('\n');
+            return endLine >= 0 ? after.Substring(0, endLine).Trim() : after.Trim();
+        }
+        // Иначе берём первую строку/абзац
+        var firstLineEnd = details.IndexOf('\n');
+        return firstLineEnd >= 0 ? details.Substring(0, firstLineEnd).Trim() : details.Trim();
+    }
+
+    static string NormalizeDetailsForSolution(string details) => details;
+    static string RemoveLinesStartingWith(string text, string prefix) => text;
+    static string? InferSolutionType(string? analysisStatus, IEnumerable<string>? actions) => analysisStatus;
 }

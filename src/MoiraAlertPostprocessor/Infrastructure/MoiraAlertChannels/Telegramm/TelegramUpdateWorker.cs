@@ -1,9 +1,12 @@
 ﻿using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
 using MoiraAlertPostprocessor.Infrastructure.Services;
 using MoiraAlertPostprocessor.Infrastructure.Repositories;
 using Telegram.Bot;
+using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
@@ -15,7 +18,7 @@ public class TelegramUpdateWorker : BackgroundService
 {
     private readonly ILogger<TelegramUpdateWorker> _logger;
     private readonly TelegramBotClient _botClient;
-    private readonly TelegramAlertChannel _channel; 
+    private readonly IMoiraAlertChannel _channel;
     private readonly ITelegramPostParser _postParser;
     private readonly ITelegramReplyFormatter _replyFormatter;
     private readonly INlpService _nlpService;
@@ -33,6 +36,9 @@ public class TelegramUpdateWorker : BackgroundService
         ILogger<TelegramUpdateWorker> logger)
     {
         var opts = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        if (string.IsNullOrWhiteSpace(opts.BotToken))
+            throw new ArgumentException("BotToken не может быть пустым", nameof(options));
+
         _logger = logger;
         _botClient = new TelegramBotClient(opts.BotToken);
         
@@ -61,6 +67,8 @@ public class TelegramUpdateWorker : BackgroundService
             cancellationToken: stoppingToken
         );
 
+        _logger.LogInformation("TelegramUpdateWorker запущен");
+
         await Task.Delay(Timeout.Infinite, stoppingToken);
     }
 
@@ -85,16 +93,22 @@ public class TelegramUpdateWorker : BackgroundService
 
     private async Task HandleMessageAsync(Message msg, CancellationToken ct)
     {
-        if (!_postParser.TryParse(msg, out var alert))
+        if (!_postParser.TryParse(_botClient, msg, out var alert))
             return;
 
         var suggestion = await _nlpService.GetSuggestionAsync(alert!, ct);
         var reply = _replyFormatter.Format(suggestion);
+        if (msg.Chat.Type == ChatType.Channel)
+        {
+            await _channel.SendReplyToPostAsync(msg.MessageId, reply, ct);
+        }
+        else
+        {
+            await _channel.SendReplyToMessageAsync(msg.Chat.Id, msg.MessageId, reply, ct);
+            var botReplyId = msg.MessageId + 1; 
+            await _channel.SendFeedbackButtonsAsync(msg.Chat.Id, msg.MessageId, ct);
+        }
 
-        await _channel.SendReplyToMessageAsync(msg.Chat.Id, msg.MessageId, reply, ct);
-        
-        var botReplyId = msg.MessageId + 1; 
-        await _channel.SendFeedbackButtonsAsync(msg.Chat.Id, msg.MessageId, ct);
     }
 
     private async Task HandleCallbackAsync(CallbackQuery callback, CancellationToken ct)
@@ -134,15 +148,20 @@ public class TelegramUpdateWorker : BackgroundService
                 text: $"Спасибо! Ваш голос учтен ({rating}).",
                 cancellationToken: ct);
         }
-        catch
+        catch (Exception ex)
         {
-            // Message might be too old to edit or deleted
+            _logger.LogError(ex, "Ошибка при обработке feedback Telegram");
         }
     }
 
     private Task HandlePollingErrorAsync(ITelegramBotClient bot, Exception exception, CancellationToken ct)
     {
-        _logger.LogError(exception, "Polling error");
+        var errorMsg = exception switch
+        {
+            ApiRequestException apiEx => $"Telegram API Error: [{apiEx.ErrorCode}] {apiEx.Message}",
+            _ => exception.Message
+        };
+        _logger.LogError("Polling error: {Message}", errorMsg);
         return Task.CompletedTask;
     }
 }
