@@ -6,6 +6,7 @@ using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.Mapping;
 using MoiraAlertPostprocessor.Infrastructure.MCP;
+using MoiraAlertPostprocessor.Infrastructure.MCP.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,8 +28,7 @@ builder.Services.AddEndpointsApiExplorer();
 // Ports -> Adapters
 builder.Services
     .AddSingleton<IAlertRepository, MoiraAlertPostprocessor.Infrastructure.Repositories.InMemoryAlertRepository>();
-builder.Services.AddSingleton<IToolExecuter, McpClient>();
-builder.Services.AddSingleton<ApiToolExecutor>();
+builder.Services.AddSingleton<McpClient>();
 
 // Register HTTP client for Ollama
 builder.Services.AddHttpClient<OllamaClient>();
@@ -69,6 +69,9 @@ else
     builder.Services
         .AddSingleton<IMoiraAlertChannel, MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.NullAlertChannel>();
 }
+
+builder.Services.AddSingleton<IMcpTool, McpToolForwarder>();
+builder.Services.AddSingleton<IMcpTool, K8SScaleTool>();
 
 builder.Services.AddAutoMapper(cfg => { cfg.AddProfile<MoiraMappingProfile>(); });
 

@@ -10,12 +10,12 @@ public class OllamaClient : INlpService
 {
     private readonly HttpClient _http;
     private readonly OllamaOptions _options;
-    private readonly IToolExecuter _toolExecuter;
+    private readonly McpClient _mcpClient;
 
-    public OllamaClient(HttpClient http, IOptions<OllamaOptions> options, IToolExecuter toolExecuter)
+    public OllamaClient(HttpClient http, IOptions<OllamaOptions> options, McpClient mcpClient)
     {
         _http = http;
-        _toolExecuter = toolExecuter;
+        _mcpClient = mcpClient;
         _options = options.Value;
         if (_options.TimeoutSeconds <= 0)
             _options = new OllamaOptions
@@ -156,7 +156,7 @@ public class OllamaClient : INlpService
         {
             try
             {
-                var toolResult = await _toolExecuter.ExecuteAsync(
+                var toolResult = await _mcpClient.ForwardTool(
                     extracted.SuggestedSolution.ToolName,
                     extracted.SuggestedSolution.ToolArgs,
                     cancellationToken
@@ -183,22 +183,13 @@ public class OllamaClient : INlpService
         sb.AppendLine();
         sb.AppendLine("ДОСТУПНЫЕ ИНСТРУМЕНТЫ (MCP):");
         sb.AppendLine();
-        sb.AppendLine("1. execute_on_api — выполняет HTTP-запрос к внутреннему API.");
         sb.AppendLine("   Формат вызова:");
         sb.AppendLine("   {");
-        sb.AppendLine("     \"tool_name\": \"execute_on_api\",");
-        sb.AppendLine("     \"tool_args\": {");
-        sb.AppendLine("       \"url\": \"https://внутренний-хост/путь\",");
-        sb.AppendLine("       \"method\": \"POST\",");
-        sb.AppendLine("       \"body\": { \"ключ\": \"значение\" }");
-        sb.AppendLine("     }");
+        sb.AppendLine("     \"mcp_server\": \"имя_mcp_сервера\",");
+        sb.AppendLine("     \"tool_name\": \"имя_инструмента\",");
+        sb.AppendLine("     \"tool_args\": { \"ключ\": \"значение\" }");
         sb.AppendLine("   }");
         sb.AppendLine();
-        sb.AppendLine("   Требования:");
-        sb.AppendLine("   - URL должен быть внутренним (например, http://k8s-api.local, http://monitoring.internal)");
-        sb.AppendLine("   - Метод: GET, POST, PUT или DELETE");
-        sb.AppendLine("   - Тело (body) — JSON-объект (для GET можно опустить)");
-        sb.AppendLine("   - Не указывай заголовки — они добавляются автоматически");
         sb.AppendLine();
         sb.AppendLine("Если проблема решается одним из инструментов:");
         sb.AppendLine("- Установи \"is_actionable_by_mcp\": true");

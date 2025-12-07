@@ -1,23 +1,19 @@
 namespace MoiraAlertPostprocessor.Infrastructure.MCP;
 
-public class McpClient : IToolExecuter
+public class McpClient
 {
-    private readonly ApiToolExecutor _apiToolExecutor;
-
-    public McpClient(ApiToolExecutor apiToolExecutor)
+    private readonly IEnumerable<IMcpTool> _tools;
+    public McpClient(HttpClient httpClient, IEnumerable<IMcpTool> tools)
     {
-        _apiToolExecutor = apiToolExecutor;
+        _tools = tools;
     }
 
-    public async Task<ToolExecutionResult> ExecuteAsync(string toolName, Dictionary<string, string> args,
+    public async Task<ToolExecutionResult> ForwardTool(string toolName,
+        Dictionary<string, string> args,
         CancellationToken ct = default)
     {
-        switch (toolName)
-        {
-            case "execute_on_api":
-                return await _apiToolExecutor.ExecuteAsync(toolName, args, ct);
-            default:
-                throw new ArgumentException($"Unsupported tool: {toolName}");
-        }
+        var tool = _tools.FirstOrDefault(t => t.Name == toolName);
+        if (tool == null) throw new ArgumentException($"Unknown tool - {toolName}");
+        return await tool.ExecuteAsync(args, ct);
     }
 }
