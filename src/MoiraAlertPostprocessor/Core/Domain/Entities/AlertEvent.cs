@@ -1,6 +1,6 @@
-using MoiraPostprocessor.Domain.Entities;
+using MoiraAlertPostprocessor.Domain.Entities;
 
-namespace MoiraAlertPostprocessor.Domain.Entities;
+namespace MoiraAlertPostprocessor.Core.Domain.Entities;
 
 public class AlertEvent(
     string rawMetric,

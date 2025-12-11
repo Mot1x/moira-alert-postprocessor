@@ -1,16 +1,14 @@
 ﻿using Microsoft.Extensions.Options;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
-using MoiraAlertPostprocessor.Infrastructure.Services;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
+using MoiraAlertPostprocessor.Infrastructure.NlServices;
 using MoiraAlertPostprocessor.Infrastructure.Repositories;
+using MoiraAlertPostprocessor.Infrastructure.Services;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
 
@@ -41,7 +39,7 @@ public class TelegramUpdateWorker : BackgroundService
 
         _logger = logger;
         _botClient = new TelegramBotClient(opts.BotToken);
-        
+
         if (channel is TelegramAlertChannel tgChannel)
             _channel = tgChannel;
         else
@@ -58,13 +56,13 @@ public class TelegramUpdateWorker : BackgroundService
     {
         var receiverOptions = new ReceiverOptions
         {
-            AllowedUpdates = new[] { UpdateType.Message, UpdateType.CallbackQuery }
+            AllowedUpdates = [UpdateType.Message, UpdateType.CallbackQuery]
         };
 
         _botClient.StartReceiving(
-            updateHandler: new DefaultUpdateHandler(HandleUpdateAsync, HandlePollingErrorAsync),
-            receiverOptions: receiverOptions,
-            cancellationToken: stoppingToken
+            new DefaultUpdateHandler(HandleUpdateAsync, HandlePollingErrorAsync),
+            receiverOptions,
+            stoppingToken
         );
 
         _logger.LogInformation("TelegramUpdateWorker запущен");
@@ -76,13 +74,14 @@ public class TelegramUpdateWorker : BackgroundService
     {
         try
         {
-            if (update.Type == UpdateType.Message && update.Message is { } msg)
+            switch (update.Type)
             {
-                await HandleMessageAsync(msg, ct);
-            }
-            else if (update.Type == UpdateType.CallbackQuery && update.CallbackQuery is { } callback)
-            {
-                await HandleCallbackAsync(callback, ct);
+                case UpdateType.Message when update.Message is { } msg:
+                    await HandleMessageAsync(msg, ct);
+                    break;
+                case UpdateType.CallbackQuery when update.CallbackQuery is { } callback:
+                    await HandleCallbackAsync(callback, ct);
+                    break;
             }
         }
         catch (Exception ex)
@@ -105,10 +104,9 @@ public class TelegramUpdateWorker : BackgroundService
         else
         {
             await _channel.SendReplyToMessageAsync(msg.Chat.Id, msg.MessageId, reply, ct);
-            var botReplyId = msg.MessageId + 1; 
+            var botReplyId = msg.MessageId + 1;
             await _channel.SendFeedbackButtonsAsync(msg.Chat.Id, msg.MessageId, ct);
         }
-
     }
 
     private async Task HandleCallbackAsync(CallbackQuery callback, CancellationToken ct)
@@ -124,9 +122,9 @@ public class TelegramUpdateWorker : BackgroundService
         if (!_voteRepository.TryVote(chatId, messageId, userId))
         {
             await _botClient.AnswerCallbackQuery(
-                callbackQueryId: callback.Id,
-                text: "Вы уже голосовали за этот ответ.",
-                showAlert: false,
+                callback.Id,
+                "Вы уже голосовали за этот ответ.",
+                false,
                 cancellationToken: ct);
             return;
         }
@@ -135,17 +133,17 @@ public class TelegramUpdateWorker : BackgroundService
         _metricsService.RecordFeedback(rating);
 
         await _botClient.AnswerCallbackQuery(
-            callbackQueryId: callback.Id,
-            text: "Спасибо за отзыв!",
-            showAlert: false,
+            callback.Id,
+            "Спасибо за отзыв!",
+            false,
             cancellationToken: ct);
-            
-        try 
+
+        try
         {
-             await _botClient.EditMessageText(
-                chatId: new ChatId(chatId),
-                messageId: messageId,
-                text: $"Спасибо! Ваш голос учтен ({rating}).",
+            await _botClient.EditMessageText(
+                new ChatId(chatId),
+                messageId,
+                $"Спасибо! Ваш голос учтен ({rating}).",
                 cancellationToken: ct);
         }
         catch (Exception ex)

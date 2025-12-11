@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace MoiraAlertPostprocessor.Domain.Entities;
+namespace MoiraAlertPostprocessor.Core.Domain.Entities;
 
 public class Metric(string name, IDictionary<string, string> labels)
 {

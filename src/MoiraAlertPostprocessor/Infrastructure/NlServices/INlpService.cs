@@ -1,3 +1,4 @@
+using MoiraAlertPostprocessor.Core.Domain.Entities;
 using MoiraAlertPostprocessor.Domain.Entities;
 
 namespace MoiraAlertPostprocessor.Infrastructure.NlServices;

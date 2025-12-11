@@ -15,8 +15,8 @@ public class InMemoryAlertRepository : IAlertRepository
         return Task.CompletedTask;
     }
 
-    public MoiraAlert Get(string id)
+    public MoiraAlert? Get(string id)
     {
-        return store.TryGetValue(id, out var a) ? a : null;
+        return store.GetValueOrDefault(id);
     }
 }

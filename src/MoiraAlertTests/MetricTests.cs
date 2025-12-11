@@ -1,5 +1,6 @@
-using MoiraAlertPostprocessor.Domain.Entities;
-using Xunit;
+using MoiraAlertPostprocessor.Core.Domain.Entities;
+
+namespace MoiraAlertTests;
 
 public class MetricTests
 {

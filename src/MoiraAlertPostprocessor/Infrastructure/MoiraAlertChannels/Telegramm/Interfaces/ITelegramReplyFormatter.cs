@@ -1,6 +1,6 @@
-namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
+using MoiraAlertPostprocessor.Core.Domain.Entities;
 
-using MoiraAlertPostprocessor.Domain.Entities;
+namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 
 /// <summary>
 /// Форматирует Suggestion в текстовое сообщение, пригодное для отправки в Telegram.

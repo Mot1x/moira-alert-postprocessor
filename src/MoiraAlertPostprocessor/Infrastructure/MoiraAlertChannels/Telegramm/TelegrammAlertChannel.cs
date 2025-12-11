@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.Options;
 using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
-using System.Text.Json;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -15,6 +14,7 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     private readonly string _channelChatId;
     private readonly string? _discussionGroupChatId;
     private readonly ILogger<TelegramAlertChannel> _logger;
+    private const int MaxMessageLength = 4096;
 
     public TelegramAlertChannel(
         IOptions<TelegramAlertOptions> options,
@@ -36,7 +36,8 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     {
         try
         {
-            using var stream = await msg.ReadAsStreamAsync(cancellationToken);
+            await using var stream = await msg.ReadAsStreamAsync(cancellationToken);
+            
             // Отправляем файл JSON в канал
             await SendAlertFileAsync(stream, cancellationToken);
         }
@@ -60,30 +61,35 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     public async Task SendReplyToPostAsync(int channelPostMessageId, string text, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_discussionGroupChatId))
-            throw new InvalidOperationException("DiscussionGroupChatId не задан в настройках, отправка ответа под постом невозможна.");
+            throw new InvalidOperationException(
+                "DiscussionGroupChatId не задан в настройках, отправка ответа под постом невозможна.");
 
-        const int MaxMessageLength = 4096;
+
         var message = text.Length <= MaxMessageLength ? text : text[..MaxMessageLength] + "\n\n[... обрезано]";
 
         try
         {
             await _botClient.SendMessage(
-                chatId: new ChatId(_discussionGroupChatId),
-                text: message,
+                new ChatId(_discussionGroupChatId),
+                message,
                 messageThreadId: channelPostMessageId,
                 parseMode: ParseMode.Html,
                 linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
                 cancellationToken: ct
             );
         }
-        catch (ApiRequestException ex) when (ex.ErrorCode == 400 && ex.Message.Contains("message thread not found", StringComparison.OrdinalIgnoreCase))
+        catch (ApiRequestException ex) when (
+            ex.ErrorCode == 400 &&
+            ex.Message.Contains("message thread not found", StringComparison.OrdinalIgnoreCase))
         {
-            _logger.LogWarning(ex, "Тред с id {MessageId} не найден в чате {ChatId}, отправляем сообщение без thread id.", channelPostMessageId, _discussionGroupChatId);
+            _logger.LogWarning(ex,
+                "Тред с id {MessageId} не найден в чате {ChatId}, отправляем сообщение без thread id.",
+                channelPostMessageId, _discussionGroupChatId);
 
             await _botClient.SendMessage(
-                chatId: new ChatId(_discussionGroupChatId),
-                text: message,
-                parseMode: ParseMode.Html,
+                new ChatId(_discussionGroupChatId),
+                message,
+                ParseMode.Html,
                 linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
                 cancellationToken: ct
             );
@@ -93,14 +99,15 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     public async Task SendReplyToMessageAsync(long chatId, int replyToMessageId, string text,
         CancellationToken ct = default)
     {
-        const int MaxMessageLength = 4096;
-        var message = text.Length <= MaxMessageLength ? text : text[..MaxMessageLength] + "\n\n[... обрезано]";
+        var message = text.Length <= MaxMessageLength
+            ? text
+            : text[..MaxMessageLength] + "\n\n[... обрезано]";
 
         await _botClient.SendMessage(
-            chatId: new ChatId(chatId),
-            text: message,
-            parseMode: ParseMode.Html,
-            replyParameters: new ReplyParameters { MessageId = replyToMessageId },
+            new ChatId(chatId),
+            message,
+            ParseMode.Html,
+            new ReplyParameters { MessageId = replyToMessageId },
             linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
             cancellationToken: ct
         );
@@ -116,10 +123,10 @@ public class TelegramAlertChannel : IMoiraAlertChannel
             jsonStream.Seek(0, SeekOrigin.Begin);
 
         await _botClient.SendDocument(
-            chatId: new ChatId(_channelChatId),
-            document: InputFile.FromStream(jsonStream, fileName),
-            caption: "Moira alert",
-            parseMode: ParseMode.Html,
+            new ChatId(_channelChatId),
+            InputFile.FromStream(jsonStream, fileName),
+            "Moira alert",
+            ParseMode.Html,
             cancellationToken: ct
         );
     }
@@ -127,20 +134,22 @@ public class TelegramAlertChannel : IMoiraAlertChannel
     private async Task SendAlertAsync(string jsonText, CancellationToken ct)
     {
         // Устаревший способ: форматированный текст. Оставляем для совместимости, но больше не используем.
-        const int MaxMessageLength = 4096;
-        var message = jsonText.Length <= MaxMessageLength ? jsonText : jsonText[..MaxMessageLength] + "\n\n[... обрезано]";
+        var message = jsonText.Length <= MaxMessageLength
+            ? jsonText
+            : jsonText[..MaxMessageLength] + "\n\n[... обрезано]";
+        
         var escaped = EscapeHtml(message);
         var formatted = $"<pre>{escaped}</pre>";
 
         await _botClient.SendMessage(
-            chatId: new ChatId(_channelChatId),
-            text: formatted,
-            parseMode: ParseMode.Html,
+            new ChatId(_channelChatId),
+            formatted,
+            ParseMode.Html,
             linkPreviewOptions: new LinkPreviewOptions { IsDisabled = true },
             cancellationToken: ct
         );
     }
-    
+
     public async Task SendFeedbackButtonsAsync(long chatId, int replyToMessageId, CancellationToken ct)
     {
         var keyboard = new InlineKeyboardMarkup([
@@ -151,16 +160,18 @@ public class TelegramAlertChannel : IMoiraAlertChannel
         ]);
 
         await _botClient.SendMessage(
-            chatId: new ChatId(chatId),
-            text: "Оцените качество ответа:",
+            new ChatId(chatId),
+            "Оцените качество ответа:",
             replyParameters: new ReplyParameters { MessageId = replyToMessageId },
             replyMarkup: keyboard,
             cancellationToken: ct
         );
     }
 
-    private static string EscapeHtml(string s) =>
-        s.Replace("&", "&amp;")
-         .Replace("<", "&lt;")
-         .Replace(">", "&gt;");
+    private static string EscapeHtml(string s)
+    {
+        return s.Replace("&", "&amp;")
+            .Replace("<", "&lt;")
+            .Replace(">", "&gt;");
+    }
 }

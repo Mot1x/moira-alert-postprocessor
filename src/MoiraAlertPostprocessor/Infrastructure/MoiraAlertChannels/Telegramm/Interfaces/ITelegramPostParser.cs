@@ -1,6 +1,6 @@
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 
-using MoiraAlertPostprocessor.Domain.Entities;
+using Domain.Entities;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 

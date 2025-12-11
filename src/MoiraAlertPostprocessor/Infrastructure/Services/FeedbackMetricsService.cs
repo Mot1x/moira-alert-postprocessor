@@ -9,7 +9,7 @@ public class FeedbackMetricsService
         "User feedback on AI suggestions", 
         new CounterConfiguration
         {
-            LabelNames = new[] { "rating" }
+            LabelNames = ["rating"]
         });
 
     public void RecordFeedback(string rating)

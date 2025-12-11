@@ -10,35 +10,24 @@ namespace MoiraAlertPostprocessor.API.Controllers;
 
 [ApiController]
 [Route("moira")]
-public class WebhookController : ControllerBase
+public class WebhookController(
+    ProcessAlertUseCase processAlertUseCase,
+    IMapper mapper,
+    IMoiraAlertChannel moiraAlertChannel)
+    : ControllerBase
 {
-    private readonly ProcessAlertUseCase _processAlertUseCase;
-    private readonly IMapper _mapper;
-    private readonly IMoiraAlertChannel _moiraAlertChannel;
-
-    public WebhookController(
-        ProcessAlertUseCase processAlertUseCase,
-        IMapper mapper,
-        IMoiraAlertChannel moiraAlertChannel)
-    {
-        _processAlertUseCase = processAlertUseCase;
-        _mapper = mapper;
-        _moiraAlertChannel = moiraAlertChannel;
-    }
-
     [HttpPost("alert")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(OutgoingSuggestionDto), StatusCodes.Status200OK)]
     [Produces("application/json")]
     public async Task<IActionResult> ReceiveAlert([FromBody] IncomingMoiraWebhookDto dto,
         CancellationToken cancellationToken)
     {
-        var domain = _mapper.Map<MoiraAlert>(dto);
-        var response = await _processAlertUseCase.ExecuteAsync(new ProcessAlertRequest(domain), cancellationToken);
-        var outDto = _mapper.Map<OutgoingSuggestionDto>(response.Suggestion);
+        var domain = mapper.Map<MoiraAlert>(dto);
+        var response = await processAlertUseCase.ExecuteAsync(new ProcessAlertRequest(domain), cancellationToken);
+        var outDto = mapper.Map<OutgoingSuggestionDto>(response.Suggestion);
 
         // Отправляем в канал исходный триггер как JSON-файл, а не ответ нейросети
-        await _moiraAlertChannel.AlertUsersAsync(JsonContent.Create(dto), cancellationToken);
+        await moiraAlertChannel.AlertUsersAsync(JsonContent.Create(dto), cancellationToken);
 
         try
         {

@@ -1,6 +1,8 @@
 ﻿using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
+using MoiraAlertPostprocessor.Core.Domain.Entities;
 using MoiraAlertPostprocessor.Domain.Entities;
 
 namespace MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
@@ -14,12 +16,13 @@ public class OllamaClient : INlpService
     {
         _http = http;
         _options = options.Value;
-        if (_options.TimeoutSeconds <= 0) _options = new OllamaOptions
-        {
-            Endpoint = _options.Endpoint,
-            Model = _options.Model,
-            TimeoutSeconds = 30
-        };
+        if (_options.TimeoutSeconds <= 0)
+            _options = new OllamaOptions
+            {
+                Endpoint = _options.Endpoint,
+                Model = _options.Model,
+                TimeoutSeconds = 30
+            };
         _http.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
         Console.WriteLine($"[Startup] NLP provider: Ollama, endpoint={_options.Endpoint}, model={_options.Model}");
     }
@@ -27,13 +30,11 @@ public class OllamaClient : INlpService
     public async Task<Suggestion> GetSuggestionAsync(MoiraAlert alert, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_options.Endpoint) || string.IsNullOrWhiteSpace(_options.Model))
-        {
             return new Suggestion(
                 "NLP не сконфигурирован",
                 "Отсутствуют настройки Ollama.Endpoint/Model. Задайте их через appsettings.json, переменные окружения или docker-compose.yml.",
                 new List<string>()
             );
-        }
 
         var payload = new
         {
@@ -81,10 +82,11 @@ public class OllamaClient : INlpService
                 new List<string>()
             );
         }
+
         var json = await resp.Content.ReadAsStringAsync(cancellationToken);
 
         // Попытка извлечения текста от провайдера
-        string text = json;
+        var text = json;
         try
         {
             using var doc = JsonDocument.Parse(json);
@@ -120,30 +122,26 @@ public class OllamaClient : INlpService
 
             // Fallback: если steps пустой, пробуем извлечь из description
             if (steps.Count == 0 && !string.IsNullOrWhiteSpace(extracted.suggested_solution?.description))
-            {
                 steps = ExtractStepsFromDescription(extracted.suggested_solution.description);
-            }
 
             var rawCommand = extracted.suggested_solution?.command;
-            if (string.IsNullOrWhiteSpace(rawCommand))
-            {
-                rawCommand = TryExtractCommandFallback(extracted.suggested_solution?.description, steps);
-            }
-            else
-            {
-                rawCommand = rawCommand.Trim();
-            }
+
+            rawCommand = string.IsNullOrWhiteSpace(rawCommand)
+                ? TryExtractCommandFallback(extracted.suggested_solution?.description, steps)
+                : rawCommand.Trim();
+
             if (!string.IsNullOrWhiteSpace(rawCommand))
                 Console.WriteLine("[NLP] Extracted command: " + rawCommand);
 
             var summary = extracted.problem_summary ?? "Нет краткого описания";
             var detailsCombined = BuildDetails(extracted);
+
             return new Suggestion(summary, detailsCombined, steps,
-                analysisStatus: extracted.analysis_status,
-                isActionable: extracted.is_actionable_by_mcp,
-                solutionType: extracted.suggested_solution?.type,
-                solutionDescription: extracted.suggested_solution?.description,
-                solutionCommand: rawCommand);
+                extracted.analysis_status,
+                extracted.is_actionable_by_mcp,
+                extracted.suggested_solution?.type,
+                extracted.suggested_solution?.description,
+                rawCommand);
         }
 
         // Fallback на старую логику
@@ -160,12 +158,12 @@ public class OllamaClient : INlpService
         if (string.IsNullOrWhiteSpace(raw)) return steps;
 
         // Пытаемся разбить по номерам "1. ... 2. ..." либо переводам строк
-        var matches = System.Text.RegularExpressions.Regex.Matches(raw, @"\b\d+\.\s+.*?(?=(\b\d+\.\s)|$)", System.Text.RegularExpressions.RegexOptions.Singleline);
+        var matches = Regex.Matches(raw, @"\b\d+\.\s+.*?(?=(\b\d+\.\s)|$)", RegexOptions.Singleline);
         if (matches.Count > 0)
         {
-            foreach (System.Text.RegularExpressions.Match m in matches)
+            foreach (Match m in matches)
             {
-                var txt = System.Text.RegularExpressions.Regex.Replace(m.Value.Trim(), @"^(\d+\.)\s+", string.Empty).Trim();
+                var txt = Regex.Replace(m.Value.Trim(), @"^(\d+\.)\s+", string.Empty).Trim();
                 if (txt.Length > 0) steps.Add(txt);
             }
         }
@@ -173,11 +171,13 @@ public class OllamaClient : INlpService
         {
             // Разбиваем по строкам или точкам, но осторожно: сначала строки
             var lines = raw.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
             foreach (var line in lines)
             {
-                var t = System.Text.RegularExpressions.Regex.Replace(line.Trim(), @"^(\d+\.)\s+", string.Empty).Trim();
+                var t = Regex.Replace(line.Trim(), @"^(\d+\.)\s+", string.Empty).Trim();
                 if (t.Length > 0) steps.Add(t);
             }
+
             if (steps.Count == 0)
             {
                 // Последний fallback: делим по '. ' если описаний несколько
@@ -189,6 +189,7 @@ public class OllamaClient : INlpService
                 }
             }
         }
+
         return steps;
     }
 
@@ -222,7 +223,8 @@ public class OllamaClient : INlpService
     {
         var sb = new StringBuilder();
         // Новый строгий JSON-инструктаж
-        sb.AppendLine("Ты — ассистент по наблюдаемости. Проанализируй Moira alert и ответь СТРОГО в формате JSON без пояснений, без markdown, без комментариев.");
+        sb.AppendLine(
+            "Ты — ассистент по наблюдаемости. Проанализируй Moira alert и ответь СТРОГО в формате JSON без пояснений, без markdown, без комментариев.");
         sb.AppendLine("Ответь строго в формате JSON. Используй следующую схему:");
         sb.AppendLine("{");
         sb.AppendLine("  \"analysis_status\": \"string (e.g. 'root_cause_identified' | 'needs_more_data')\",");
@@ -230,12 +232,14 @@ public class OllamaClient : INlpService
         sb.AppendLine("  \"suggested_solution\": {");
         sb.AppendLine("    \"type\": \"string (e.g. 'config_change' | 'scale_out' | 'investigate')\",");
         sb.AppendLine("    \"steps\": [ \"строка шага без нумерации\", \"ещё один шаг\" ],");
-        sb.AppendLine("    \"command\": \"string (одна безопасная команда или последовательность; если нет — пустая строка)\"");
+        sb.AppendLine(
+            "    \"command\": \"string (одна безопасная команда или последовательность; если нет — пустая строка)\"");
         sb.AppendLine("  },");
         sb.AppendLine("  \"is_actionable_by_mcp\": true,");
         sb.AppendLine("  \"confidence\": 0.0");
         sb.AppendLine("}");
-        sb.AppendLine("Только JSON. Никакого текста вне {}. 'steps' обязательный массив (может быть пустым). Каждый элемент steps — одна законченная инструкция без ведущих '1.' или '-' и без лишних пробелов. НЕ используй markdown.");
+        sb.AppendLine(
+            "Только JSON. Никакого текста вне {}. 'steps' обязательный массив (может быть пустым). Каждый элемент steps — одна законченная инструкция без ведущих '1.' или '-' и без лишних пробелов. НЕ используй markdown.");
         sb.AppendLine();
 
         sb.AppendLine("Trigger:");
@@ -287,7 +291,7 @@ public class OllamaClient : INlpService
     private static string? TryExtractCommandFallback(string? description, List<string> steps)
     {
         // Ищем первую строку, похожую на команду (начинается с curl, kubectl, docker, systemctl, ping, tail, grep, cat)
-        IEnumerable<string> sources = Enumerable.Empty<string>();
+        var sources = Enumerable.Empty<string>();
         if (!string.IsNullOrWhiteSpace(description))
             sources = sources.Append(description);
         if (steps != null && steps.Count > 0)
@@ -303,16 +307,19 @@ public class OllamaClient : INlpService
                 if (StartsWithCommand(candidate)) return candidate;
             }
         }
+
         return null;
 
-        static bool StartsWithCommand(string s) =>
-            s.StartsWith("curl ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("kubectl ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("docker ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("systemctl ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("ping ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("grep ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("cat ", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("tail ", StringComparison.OrdinalIgnoreCase);
+        static bool StartsWithCommand(string s)
+        {
+            return s.StartsWith("curl ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("kubectl ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("docker ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("systemctl ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("ping ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("grep ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("cat ", StringComparison.OrdinalIgnoreCase) ||
+                   s.StartsWith("tail ", StringComparison.OrdinalIgnoreCase);
+        }
     }
 }

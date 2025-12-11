@@ -1,6 +1,6 @@
-using System.Linq;
 using System.Text;
-using MoiraAlertPostprocessor.Domain.Entities;
+using MoiraAlertPostprocessor.Core.Domain.Entities;
+using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 
 namespace MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Services;
 
@@ -30,8 +30,10 @@ public class TelegramReplyFormatter : ITelegramReplyFormatter
         {
             sb.AppendLine("<b>Решение:</b>");
             sb.AppendLine("<pre>");
-            for (int i = 0; i < steps.Count; i++)
+            
+            for (var i = 0; i < steps.Count; i++)
                 sb.AppendLine($"    {i + 1}. {Escape(steps[i])}");
+            
             sb.AppendLine("</pre>");
         }
 
@@ -55,10 +57,17 @@ public class TelegramReplyFormatter : ITelegramReplyFormatter
         return suggestion.Actions.ToList();
     }
 
-    static string Escape(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
-    static string EscapeCode(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("`", "&#96;");
+    private static string Escape(string s)
+    {
+        return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+    }
 
-    static string ExtractProblem(string details)
+    private static string EscapeCode(string s)
+    {
+        return s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("`", "&#96;");
+    }
+
+    private static string ExtractProblem(string details)
     {
         // Пытаемся извлечь первую смысловую строку как описание проблемы.
         // Если в тексте есть маркер '*Проблема:*', забираем его содержимое.
@@ -69,12 +78,24 @@ public class TelegramReplyFormatter : ITelegramReplyFormatter
             var endLine = after.IndexOf('\n');
             return endLine >= 0 ? after.Substring(0, endLine).Trim() : after.Trim();
         }
+
         // Иначе берём первую строку/абзац
         var firstLineEnd = details.IndexOf('\n');
         return firstLineEnd >= 0 ? details.Substring(0, firstLineEnd).Trim() : details.Trim();
     }
 
-    static string NormalizeDetailsForSolution(string details) => details;
-    static string RemoveLinesStartingWith(string text, string prefix) => text;
-    static string? InferSolutionType(string? analysisStatus, IEnumerable<string>? actions) => analysisStatus;
+    private static string NormalizeDetailsForSolution(string details)
+    {
+        return details;
+    }
+
+    private static string RemoveLinesStartingWith(string text, string prefix)
+    {
+        return text;
+    }
+
+    private static string? InferSolutionType(string? analysisStatus, IEnumerable<string>? actions)
+    {
+        return analysisStatus;
+    }
 }

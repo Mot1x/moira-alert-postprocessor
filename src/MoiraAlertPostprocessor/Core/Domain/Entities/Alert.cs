@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MoiraAlertPostprocessor.Core.Domain.Entities;
 using MoiraAlertPostprocessor.Domain.Entities;
 
 namespace MoiraPostprocessor.Domain.Entities

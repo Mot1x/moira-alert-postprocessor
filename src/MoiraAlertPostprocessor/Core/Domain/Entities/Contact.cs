@@ -1,4 +1,4 @@
-namespace MoiraAlertPostprocessor.Domain.Entities
+namespace MoiraAlertPostprocessor.Core.Domain.Entities
 {
     public class Contact(string type, string value, string id, string user, string team)
     {

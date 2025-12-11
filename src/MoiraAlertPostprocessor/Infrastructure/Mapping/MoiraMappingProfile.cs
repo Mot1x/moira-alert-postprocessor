@@ -1,6 +1,8 @@
-﻿using AutoMapper;
+﻿using System.Globalization;
+using AutoMapper;
 using MoiraAlertPostprocessor.API.Models.Request;
 using MoiraAlertPostprocessor.API.Models.Response;
+using MoiraAlertPostprocessor.Core.Domain.Entities;
 using MoiraAlertPostprocessor.Domain.Entities;
 using MoiraPostprocessor.Domain.Entities;
 
@@ -70,7 +72,7 @@ public class MoiraMappingProfile : Profile
             name: m.Name,
             labels: new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
-                ["value"] = m.Value.ToString(),
+                ["value"] = m.Value.ToString(CultureInfo.InvariantCulture),
                 ["unit"] = m.Unit ?? string.Empty
             }
         );

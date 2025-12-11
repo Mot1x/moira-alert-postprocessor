@@ -1,17 +1,18 @@
 ﻿using MoiraAlertPostprocessor.Core.Domain.Entities.MoiraAlertChannel.Telegram;
+using MoiraAlertPostprocessor.Infrastructure.Mapping;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm;
-using MoiraAlertPostprocessor.Infrastructure.NlServices;
-using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
-using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
-using MoiraAlertPostprocessor.Infrastructure.Mapping;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.MoiraAlertChannels.Telegramm.Services;
+using MoiraAlertPostprocessor.Infrastructure.NlServices;
+using MoiraAlertPostprocessor.Infrastructure.NlServices.Ollama;
 using MoiraAlertPostprocessor.Infrastructure.Repositories;
+using MoiraAlertPostprocessor.Infrastructure.Repositories.Interfaces;
 using MoiraAlertPostprocessor.Infrastructure.Services;
+using MoiraPostprocessor.Application.UseCases.ProcessAlert;
 using Prometheus;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder();
 
 var configuration = builder.Configuration;
 
@@ -29,7 +30,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
 // Ports -> Adapters
-builder.Services.AddSingleton<IAlertRepository, MoiraAlertPostprocessor.Infrastructure.Repositories.InMemoryAlertRepository>();
+builder.Services.AddSingleton<IAlertRepository, InMemoryAlertRepository>();
 
 // Register HTTP client for Ollama
 builder.Services.AddHttpClient<OllamaClient>();
@@ -38,17 +39,14 @@ builder.Services.AddHttpClient<OllamaClient>();
 var ollamaSection = configuration.GetSection("Ollama");
 var ollamaEndpoint = ollamaSection["Endpoint"];
 var ollamaModel = ollamaSection["Model"];
+
 if (!string.IsNullOrWhiteSpace(ollamaEndpoint) && !string.IsNullOrWhiteSpace(ollamaModel))
-{
     builder.Services.AddSingleton<INlpService>(sp => sp.GetRequiredService<OllamaClient>());
-}
 else
-{
-    builder.Services.AddSingleton<INlpService, MoiraAlertPostprocessor.Infrastructure.NlServices.SafeFallbackNlpService>();
-}
+    builder.Services.AddSingleton<INlpService, SafeFallbackNlpService>();
 
 // UseCase and controllers
-builder.Services.AddTransient<MoiraPostprocessor.Application.UseCases.ProcessAlert.ProcessAlertUseCase>();
+builder.Services.AddTransient<ProcessAlertUseCase>();
 builder.Services.AddSingleton<IVoteRepository, InMemoryVoteRepository>();
 builder.Services.AddSingleton<FeedbackMetricsService>();
 
@@ -66,6 +64,7 @@ builder.Services.AddSingleton<ITelegramReplyFormatter, TelegramReplyFormatter>()
 var tgSection = configuration.GetSection(TelegramAlertOptions.SectionName);
 var tgToken = tgSection["BotToken"];
 var tgChatId = tgSection["ChatId"];
+
 if (!string.IsNullOrWhiteSpace(tgToken) && !string.IsNullOrWhiteSpace(tgChatId))
 {
     builder.Services.AddSingleton<IMoiraAlertChannel, TelegramAlertChannel>();
@@ -76,14 +75,11 @@ else
     builder.Services.AddSingleton<IMoiraAlertChannel, NullAlertChannel>();
 }
 
-builder.Services.AddAutoMapper(cfg =>
-{
-    cfg.AddProfile<MoiraMappingProfile>();
-});
+builder.Services.AddAutoMapper(cfg => { cfg.AddProfile<MoiraMappingProfile>(); });
 
 var app = builder.Build();
 
-app.UseMetricServer(); 
+app.UseMetricServer();
 app.UseHttpMetrics();
 
 // Health-check endpoint
